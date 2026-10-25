@@ -4,81 +4,94 @@ struct OverviewView: View {
     @EnvironmentObject private var store: BoardStore
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.dynamicTypeSize) private var typeSize
-    @ScaledMetric(relativeTo: .largeTitle) private var temperatureSize = 64.0
+    @ScaledMetric(relativeTo: .largeTitle) private var temperatureSize = 48.0
     private var board: BoardStatus? { store.status }
     private var hottest: Temperature? { board?.temperatures.max { $0.celsius < $1.celsius } }
 
     var body: some View {
         Page {
-            HStack {
-                BrandLockup(size: 40)
-                Spacer()
-                Text(store.demo ? "演示设备" : "我的设备")
-                    .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-            }
             if store.demo {
-                Button {
-                    navigation.selection = .settings
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "link")
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("连接你的开发板").font(.subheadline.weight(.semibold))
-                            Text("输入设备地址，开始查看真实状态").font(.caption).foregroundStyle(.secondary)
+                Button { navigation.selection = .settings } label: {
+                    Card {
+                        HStack(spacing: 12) {
+                            Image(systemName: "qrcode.viewfinder").font(.title2).foregroundStyle(Brand.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("绑定开发板").font(.headline)
+                                Text("扫码后查看真实状态").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                    }
+                }.buttonStyle(.plain).accessibilityIdentifier("overview-connect")
+            }
+            if let board {
+                Card {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(board.hostname).font(.headline)
+                            Text("Cubie A7S").font(.subheadline).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Image(systemName: "arrow.up.right")
-                    }.padding(16)
-                }
-                .buttonStyle(.plain)
-                .background(Brand.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
-                .accessibilityIdentifier("overview-connect")
-            }
-            Card {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("RADXA / CUBIE A7S").font(.caption.weight(.semibold)).tracking(1.8).foregroundStyle(.secondary)
-                        Text("我的开发板").font(.title2.weight(.semibold))
-                        Text(board?.hostname ?? "等待连接").font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "cpu").font(.title2).foregroundStyle(Brand.accent).accessibilityHidden(true)
                     }
-                    Spacer()
-                    Image(systemName: "cpu").font(.system(size: 36, weight: .ultraLight)).foregroundStyle(Brand.accent)
-                        .accessibilityHidden(true)
+                    if let hottest {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(String(format: "%.1f", hottest.celsius))
+                                .font(.system(size: temperatureSize, weight: .medium)).monospacedDigit()
+                                .minimumScaleFactor(0.5).lineLimit(1)
+                            Text("°C").font(.title3).foregroundStyle(.secondary)
+                            Spacer()
+                            Text("最高温度").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if hottest.celsius >= 75 {
+                            Label("温度偏高，请检查散热", systemImage: "thermometer.sun")
+                                .font(.caption).foregroundStyle(.orange)
+                        }
+                    }
+                    if let uptime = board.uptimeSeconds {
+                        Text("已运行 \(Display.uptime(uptime))").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                Divider()
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(hottest.map { String(format: "%.1f", $0.celsius) } ?? "—")
-                        .font(.system(size: temperatureSize, weight: .light, design: .rounded)).monospacedDigit()
-                        .minimumScaleFactor(0.5).lineLimit(1)
-                    Text("°C").font(.title2).foregroundStyle(.secondary)
-                    Spacer()
+                LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: Layout.spacing) {
+                    if let cpu = board.cpuPercent {
+                        Metric(title: "CPU", value: String(format: "%.1f%%", cpu), symbol: "cpu", detail: "实时利用率")
+                    }
+                    if let used = board.memoryUsedBytes {
+                        Metric(title: "内存", value: Display.bytes(used), symbol: "memorychip",
+                               detail: board.memoryTotalBytes.map { "共 \(Display.bytes($0))" } ?? "")
+                    }
+                    if let used = board.diskUsedBytes {
+                        Metric(title: "存储", value: Display.bytes(used), symbol: "internaldrive",
+                               detail: board.diskTotalBytes.map { "共 \(Display.bytes($0))" } ?? "")
+                    }
+                    if let rx = board.rxBytesPerSecond {
+                        Metric(title: "下载", value: Display.bytes(rx) + "/s", symbol: "arrow.down",
+                               detail: board.txBytesPerSecond.map { "上传 \(Display.bytes($0))/s" } ?? "")
+                    }
+                    if let power = board.powerWatts {
+                        Metric(title: "功耗", value: String(format: "%.1f W", power), symbol: "bolt")
+                    }
+                    if let rpm = board.fanRPM {
+                        Metric(title: "风扇", value: "\(Int(rpm)) RPM", symbol: "fan")
+                    }
                 }
-                Text("最高传感器 · \(hottest?.name ?? "尚未提供")")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let hottest, hottest.celsius >= 75 {
-                    Label("温度偏高，请检查散热和当前负载", systemImage: "thermometer.sun")
-                        .font(.caption).foregroundStyle(.orange)
+            } else {
+                ContentUnavailableView("等待设备数据", systemImage: "cpu", description: Text("连接成功后自动更新，也可下拉刷新。"))
+            }
+            NavigationLink { NetworkView() } label: {
+                Card {
+                    HStack(spacing: 12) {
+                        Image(systemName: "wifi").font(.title2).foregroundStyle(Brand.accent)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("网络连接").font(.headline)
+                            Text(store.network?.campusText ?? "等待数据").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
                 }
-                Text("已运行 \(Display.uptime(board?.uptimeSeconds))")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
-            LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                Metric(title: "CPU", value: board?.cpuPercent.map { String(format: "%.1f%%", $0) } ?? "—",
-                       symbol: "cpu", detail: board?.cpuPercent == nil ? "等待第二次采样" : "实时利用率")
-                Metric(title: "内存", value: Display.bytes(board?.memoryUsedBytes), symbol: "memorychip",
-                       detail: "共 \(Display.bytes(board?.memoryTotalBytes))")
-                Metric(title: "存储已用", value: Display.bytes(board?.diskUsedBytes), symbol: "internaldrive",
-                       detail: "共 \(Display.bytes(board?.diskTotalBytes))")
-                Metric(title: "下载", value: Display.bytes(board?.rxBytesPerSecond) + "/s", symbol: "arrow.down",
-                       detail: "wlan0 接收速率")
-            }
-            Card {
-                Text("设备能力").font(.headline)
-                InfoRow(title: "整机功耗", value: board?.powerWatts.map { String(format: "%.1f W", $0) } ?? "未提供实测数据")
-                InfoRow(title: "风扇转速", value: board?.fanRPM.map { "\(Int($0)) RPM" } ?? "不支持转速反馈")
-                Text("不以估算值代替实测。历史曲线和通知将在后续接入。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            }.buttonStyle(.plain).accessibilityIdentifier("network-details")
         }.navigationTitle(Brand.chineseName)
     }
 }

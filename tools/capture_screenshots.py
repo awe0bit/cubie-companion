@@ -24,7 +24,7 @@ def main():
     call('status_bar',args.device,'override','--time','9:41','--dataNetwork','wifi',
          '--wifiMode','active','--wifiBars','3','--batteryState','charged','--batteryLevel','100')
     for appearance in ['light','dark']:
-        for tab in ['overview','services','network','settings']:
+        for tab in ['overview','services','settings']:
             call('terminate',args.device,BUNDLE,check=False)
             call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab',tab,'--preview-appearance',appearance)
             time.sleep(2)
@@ -33,7 +33,7 @@ def main():
     call('launch',args.device,BUNDLE,'--ui-testing','--preview-appearance','light')
     time.sleep(2)
     call('io',args.device,'screenshot',str(args.output/'welcome-light.png'))
-    print('Captured 9 real simulator screenshots; all displayed data are demo fixtures.')
+    print('Captured 7 real simulator screenshots; all displayed data are demo fixtures.')
 
 
 if __name__=='__main__':main()

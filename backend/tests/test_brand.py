@@ -35,9 +35,25 @@ class BrandTests(unittest.TestCase):
     def test_navigation_uses_native_tabs_not_custom_bar(self):
         source=(ROOT/'ios/Cubie/CubieApp.swift').read_text(encoding='utf-8')
         self.assertIn('if #available(iOS 26.0, *)',source)
-        self.assertIn('.tabBarMinimizeBehavior(.onScrollDown)',source)
+        self.assertIn('.tabBarMinimizeBehavior(.never)',source)
+        self.assertNotIn('AppTab.network',source)
         self.assertNotIn('UITabBar.appearance',source)
         self.assertNotIn('.toolbarBackground',source)
+
+    def test_qr_only_binding_and_capability_driven_services(self):
+        settings=(ROOT/'ios/Cubie/SettingsView.swift').read_text(encoding='utf-8')
+        self.assertIn('PairingView()',settings)
+        for removed in ['TextField(', 'SecureField(', 'Keychain.load()', 'device-reboot', '验证并连接']:
+            self.assertNotIn(removed,settings)
+        services=(ROOT/'ios/Cubie/ServicesView.swift').read_text(encoding='utf-8')
+        self.assertIn('ServiceDetailView(serviceID:',services)
+        self.assertIn('store.capabilities?.serviceControl == true && service.controllable',services)
+        self.assertNotIn('ServiceEventsView',services)
+        self.assertNotIn('查看事件',services)
+        overview=(ROOT/'ios/Cubie/OverviewView.swift').read_text(encoding='utf-8')
+        self.assertIn('if let power = board.powerWatts',overview)
+        self.assertIn('if let rpm = board.fanRPM',overview)
+        self.assertNotIn('历史曲线和通知',overview)
 
     def test_workflow_requires_modern_sdk(self):
         workflow=(ROOT/'.github/workflows/build-ios.yml').read_text()

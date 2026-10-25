@@ -10,13 +10,20 @@ enum Brand {
     static let name = "CoreNest"
     static let chineseName = "栖核"
     static let tagline = "让设备与服务，各归其位。"
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.3.1"
-    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "4"
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.4.0"
+    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "5"
     static let accent = Color("AccentColor")
 }
 
 enum AppTab: String, CaseIterable {
-    case overview, services, network, settings
+    case overview, services, settings
+}
+
+enum Layout {
+    static let pageInset: CGFloat = 16
+    static let cardInset: CGFloat = 18
+    static let cardRadius: CGFloat = 20
+    static let spacing: CGFloat = 16
 }
 
 @MainActor

@@ -1,10 +1,13 @@
 import XCTest
 
 final class CoreNestUITests: XCTestCase {
-    private func launch(appearance: String = "light") -> XCUIApplication {
+    private func launch(appearance: String = "light", largeText: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--preview-appearance", appearance]
+        if largeText {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        }
         app.launch()
         return app
     }
@@ -24,39 +27,40 @@ final class CoreNestUITests: XCTestCase {
         add(attachment)
     }
 
-    func testWelcomeAndNativeTabs() {
+    private func reveal(_ element: XCUIElement, app: XCUIApplication) {
+        for _ in 0..<7 {
+            if element.exists && element.isHittable { return }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable)
+    }
+
+    func testWelcomeAndThreeNativeTabs() {
         let app = launch()
         XCTAssertTrue(app.staticTexts["welcome-title"].waitForExistence(timeout: 10))
         snapshot("welcome-light")
         explore(app)
         XCTAssertTrue(app.buttons["overview-connect"].exists)
         snapshot("overview-light")
-        for title in ["服务", "网络", "设置"] {
+        for title in ["服务", "绑定"] {
             app.tabBars.buttons[title].tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
             snapshot(title+"-light")
         }
-        let reboot = app.buttons["device-reboot"]
-        for _ in 0..<5 {
-            if reboot.exists { break }
-            app.swipeUp()
-        }
-        XCTAssertTrue(reboot.waitForExistence(timeout: 5))
-        XCTAssertFalse(reboot.isEnabled)
+        XCTAssertFalse(app.tabBars.buttons["网络"].exists)
+        XCTAssertFalse(app.buttons["device-reboot"].exists)
     }
 
-    func testConnectFlowSelectsSettings() {
+    func testBindingContainsOnlyQRConfiguration() {
         let app = launch()
         XCTAssertTrue(app.buttons["welcome-connect"].waitForExistence(timeout: 10))
         app.buttons["welcome-connect"].tap()
-        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["scan-pair"].exists)
-        for _ in 0..<3 {
-            if app.textFields["设备 HTTPS 地址"].exists { break }
-            app.swipeUp()
-        }
-        XCTAssertTrue(app.textFields["设备 HTTPS 地址"].exists)
-        XCTAssertFalse(app.buttons["验证并连接"].isEnabled)
+        XCTAssertTrue(app.navigationBars["绑定"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["scan-pair"].isHittable)
+        XCTAssertEqual(app.textFields.count, 0)
+        XCTAssertEqual(app.secureTextFields.count, 0)
+        XCTAssertFalse(app.buttons["验证并连接"].exists)
+        XCTAssertFalse(app.buttons["device-reboot"].exists)
     }
 
     func testScanPairingSimulatorExplainsCameraLimitation() {
@@ -66,17 +70,72 @@ final class CoreNestUITests: XCTestCase {
         app.buttons["scan-pair"].tap()
         XCTAssertTrue(app.staticTexts["扫码暂不可用"].waitForExistence(timeout: 5))
         app.buttons["关闭"].tap()
-        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["绑定"].waitForExistence(timeout: 5))
     }
 
-    func testDarkModeAndNavigationState() {
+    func testServiceDetailsUseDataAndHideUnavailableActions() {
+        let app = launch()
+        explore(app)
+        app.tabBars.buttons["服务"].tap()
+        let panel = app.buttons["service-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        panel.tap()
+        XCTAssertTrue(app.navigationBars["1Panel"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["1panel-core.service"].exists)
+        XCTAssertTrue(app.staticTexts["采样时间"].exists)
+        XCTAssertFalse(app.buttons["查看事件"].exists)
+        XCTAssertFalse(app.buttons["重启"].exists)
+        XCTAssertFalse(app.buttons["service-refresh"].exists)
+        snapshot("service-detail-light")
+    }
+
+    func testNativeBarGeometryDoesNotChangeOnScroll() {
+        let app = launch()
+        explore(app)
+        let bar = app.tabBars.firstMatch
+        let original = bar.frame
+        app.scrollViews.firstMatch.swipeUp()
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(bar.buttons["概览"].isHittable)
+        XCTAssertTrue(bar.buttons["服务"].isHittable)
+        XCTAssertTrue(bar.buttons["绑定"].isHittable)
+        XCTAssertEqual(bar.frame.height, original.height, accuracy: 1)
+        XCTAssertEqual(bar.frame.width, original.width, accuracy: 1)
+        XCTAssertEqual(bar.frame.minY, original.minY, accuracy: 1)
+        XCTAssertFalse(app.staticTexts["不支持转速反馈"].exists)
+        XCTAssertFalse(app.staticTexts["未提供实测数据"].exists)
+        snapshot("overview-scrolled-light")
+    }
+
+    func testDarkNetworkDetailsAndNavigationState() {
         let app = launch(appearance: "dark")
         explore(app)
         snapshot("overview-dark")
-        app.tabBars.buttons["网络"].tap()
+        let network = app.buttons["network-details"]
+        reveal(network, app: app)
+        network.tap()
         XCTAssertTrue(app.staticTexts["校园网络"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["demo-network"].exists)
         snapshot("network-dark")
-        app.tabBars.buttons["概览"].tap()
-        XCTAssertTrue(app.buttons["overview-connect"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["服务"].tap()
+        XCTAssertTrue(app.navigationBars["服务"].waitForExistence(timeout: 5))
+        snapshot("services-dark")
+    }
+
+    func testLargeTextPairingAndServiceDetailsRemainReachable() {
+        let app = launch(largeText: true)
+        explore(app)
+        app.tabBars.buttons["绑定"].tap()
+        let scan = app.buttons["scan-pair"]
+        reveal(scan, app: app)
+        XCTAssertTrue(scan.isHittable)
+        snapshot("binding-accessibility")
+        app.tabBars.buttons["服务"].tap()
+        let panel = app.buttons["service-panel"]
+        reveal(panel, app: app)
+        panel.tap()
+        XCTAssertTrue(app.navigationBars["1Panel"].waitForExistence(timeout: 5))
+        reveal(app.staticTexts["1panel-core.service"], app: app)
+        snapshot("service-accessibility")
     }
 }

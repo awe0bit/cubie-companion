@@ -3,10 +3,10 @@ import SwiftUI
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) { content }
+        VStack(alignment: .leading, spacing: Layout.spacing) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+            .padding(Layout.cardInset)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous))
     }
 }
 
@@ -15,13 +15,14 @@ struct Page<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Layout.spacing) {
                 TimelineView(.periodic(from: .now, by: 5)) { _ in ConnectionBanner() }
                 content
-            }.padding(20)
+            }.frame(maxWidth: 640).frame(maxWidth: .infinity).padding(Layout.pageInset)
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .refreshable { await store.refresh() }
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -30,20 +31,19 @@ struct ConnectionBanner: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if store.demo {
-                Label("演示模式 · 所有数值均为示例", systemImage: "sparkles")
-                    .font(.caption.weight(.medium)).foregroundStyle(.orange)
+                Label("演示数据", systemImage: "sparkles")
+                    .font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     .accessibilityIdentifier("demo-banner")
             } else {
                 HStack(spacing: 7) {
                     Circle().fill(store.stale ? .orange : .teal).frame(width: 7, height: 7)
-                    Text(store.stale ? "未确认在线 · 数据可能已过期" : "已连接管理 API")
+                    Text(store.stale ? "连接中断 · 上次数据" : "已连接")
                     Spacer()
                     if store.refreshing { ProgressView().controlSize(.mini) }
+                    if let last = store.lastContact {
+                        Text(last.formatted(date: .omitted, time: .standard)).monospacedDigit()
+                    }
                 }.font(.caption).foregroundStyle(.secondary)
-                if let last = store.lastContact {
-                    Text("上次成功刷新 \(last.formatted(date: .omitted, time: .standard))")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
             }
             if let error = store.error {
                 Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
@@ -63,7 +63,7 @@ struct Metric: View {
     var body: some View {
         Card {
             Label(title, systemImage: symbol).font(.subheadline).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.semibold)).monospacedDigit().minimumScaleFactor(0.7)
+            Text(value).font(.title2.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
             if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
         }.accessibilityElement(children: .combine)
     }

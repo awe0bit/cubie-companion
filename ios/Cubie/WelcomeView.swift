@@ -18,12 +18,13 @@ struct WelcomeView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     feature("看见设备的状态", detail: "温度、资源和服务，一眼掌握。", symbol: "waveform.path.ecg")
                     feature("分清每一层连接", detail: "校园网、隧道和服务，各自呈现。", symbol: "network")
-                    feature("把安全放在前面", detail: "凭据保存在本机；危险操作需确认。", symbol: "lock.shield")
+                    feature("扫码即可绑定", detail: "核对配对码，凭据留在本机。", symbol: "qrcode.viewfinder")
                 }
                 VStack(spacing: 12) {
                     Button(action: connect) {
                         Text("连接我的开发板").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 7)
                     }.buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("welcome-connect")
+                        .buttonBorderShape(.roundedRectangle(radius: Layout.cardRadius))
                     Button("先看看演示", action: explore).controlSize(.large).accessibilityIdentifier("welcome-demo")
                     Text("演示使用示例数据，不会连接或操作真实设备。")
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)

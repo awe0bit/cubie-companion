@@ -27,23 +27,18 @@ struct RootView: View {
                     Tab("服务", systemImage: "square.stack.3d.up", value: AppTab.services) {
                         NavigationStack { ServicesView() }
                     }
-                    Tab("网络", systemImage: "network", value: AppTab.network) {
-                        NavigationStack { NetworkView() }
-                    }
-                    Tab("设置", systemImage: "slider.horizontal.3", value: AppTab.settings) {
+                    Tab("绑定", systemImage: "qrcode.viewfinder", value: AppTab.settings) {
                         NavigationStack { SettingsView() }
                     }
-                }.tabBarMinimizeBehavior(.onScrollDown)
+                }.tabBarMinimizeBehavior(.never)
             } else {
                 TabView(selection: $navigation.selection) {
                     NavigationStack { OverviewView() }
                         .tabItem { Label("概览", systemImage: "square.grid.2x2") }.tag(AppTab.overview)
                     NavigationStack { ServicesView() }
                         .tabItem { Label("服务", systemImage: "square.stack.3d.up") }.tag(AppTab.services)
-                    NavigationStack { NetworkView() }
-                        .tabItem { Label("网络", systemImage: "network") }.tag(AppTab.network)
                     NavigationStack { SettingsView() }
-                        .tabItem { Label("设置", systemImage: "slider.horizontal.3") }.tag(AppTab.settings)
+                        .tabItem { Label("绑定", systemImage: "qrcode.viewfinder") }.tag(AppTab.settings)
                 }
             }
         }

@@ -7,6 +7,7 @@ final class BoardStore: ObservableObject {
     @Published private(set) var endpoint = ""
     @Published private(set) var status: BoardStatus?
     @Published private(set) var services: [BoardService] = []
+    @Published private(set) var servicesSampledAt: String?
     @Published private(set) var network: NetworkStatus?
     @Published private(set) var capabilities: Capabilities?
     @Published private(set) var lastContact: Date?
@@ -51,6 +52,7 @@ final class BoardStore: ObservableObject {
         capabilities = nil
         status = Demo.status
         services = Demo.services
+        servicesSampledAt = Demo.status.sampledAt
         network = Demo.network
     }
 
@@ -71,6 +73,7 @@ final class BoardStore: ObservableObject {
         demo = false
         status = nil
         services = []
+        servicesSampledAt = nil
         network = nil
         lastContact = nil
         error = nil
@@ -98,6 +101,7 @@ final class BoardStore: ObservableObject {
             guard newCapabilities.apiVersion == 1 else { throw ConnectionError.incompatibleAPI }
             status = newStatus
             services = newServices.services
+            servicesSampledAt = newServices.sampledAt
             network = newNetwork
             capabilities = newCapabilities
             lastContact = Date()

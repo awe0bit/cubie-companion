@@ -45,8 +45,8 @@ final class CubieTests: XCTestCase {
         XCTAssertEqual(manifest?["NSPrivacyTracking"] as? Bool, false)
     }
 
-    func testNavigationHasFourStableTabs() {
-        XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "network", "settings"])
+    func testNavigationHasThreeStableTabs() {
+        XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "settings"])
     }
 
     func testHTTPSRootOnly() throws {
@@ -98,5 +98,6 @@ final class CubieTests: XCTestCase {
         XCTAssertFalse(store.canControl)
         XCTAssertFalse(store.canReboot)
         XCTAssertNil(store.lastContact)
+        XCTAssertEqual(store.servicesSampledAt, Demo.status.sampledAt)
     }
 }
