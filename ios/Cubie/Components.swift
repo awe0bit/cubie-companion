@@ -70,13 +70,23 @@ struct Metric: View {
 }
 
 struct InfoRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let title: String
     let value: String
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Text(title).foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(value).multilineTextAlignment(.trailing).textSelection(.enabled)
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title).foregroundStyle(.secondary)
+                    Text(value).textSelection(.enabled)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .top, spacing: 16) {
+                    Text(title).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Text(value).multilineTextAlignment(.trailing).textSelection(.enabled)
+                }
+            }
         }.font(.subheadline)
     }
 }
