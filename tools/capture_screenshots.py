@@ -29,11 +29,17 @@ def main():
             call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab',tab,'--preview-appearance',appearance)
             time.sleep(2)
             call('io',args.device,'screenshot',str(args.output/(tab+'-'+appearance+'.png')))
+    for appearance in ['light','dark']:
+        call('terminate',args.device,BUNDLE,check=False)
+        call('launch',args.device,BUNDLE,'--ui-testing','--preview-appearance',appearance)
+        time.sleep(2)
+        call('io',args.device,'screenshot',str(args.output/('welcome-'+appearance+'.png')))
     call('terminate',args.device,BUNDLE,check=False)
-    call('launch',args.device,BUNDLE,'--ui-testing','--preview-appearance','light')
+    call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','settings','--preview-appearance','light',
+         '-UIPreferredContentSizeCategoryName','UICTContentSizeCategoryAccessibilityXXXL')
     time.sleep(2)
-    call('io',args.device,'screenshot',str(args.output/'welcome-light.png'))
-    print('Captured 7 real simulator screenshots; all displayed data are demo fixtures.')
+    call('io',args.device,'screenshot',str(args.output/'settings-accessibility.png'))
+    print('Captured 9 real simulator screenshots; all displayed data are demo fixtures.')
 
 
 if __name__=='__main__':main()

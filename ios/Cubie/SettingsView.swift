@@ -20,7 +20,8 @@ struct SettingsView: View {
                     }
                     Button { showPairing = true } label: {
                         Label(store.demo ? "扫码绑定" : "扫描新设备", systemImage: "qrcode")
-                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+                            .font(.headline).foregroundStyle(Brand.onAccent)
+                            .frame(maxWidth: .infinity).padding(.vertical, 6)
                     }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .buttonBorderShape(.roundedRectangle(radius: Layout.cardRadius))

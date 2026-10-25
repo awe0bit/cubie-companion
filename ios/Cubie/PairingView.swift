@@ -21,7 +21,9 @@ struct PairingView: View {
                     ContentUnavailableView {
                         Label("已安全绑定", systemImage: "checkmark.shield.fill")
                     } description: { Text("凭据已保存到这台 iPhone 的钥匙串。") } actions: {
-                        Button("查看设备") { dismiss() }.buttonStyle(.borderedProminent)
+                        Button { dismiss() } label: {
+                            Text("查看设备").foregroundStyle(Brand.onAccent)
+                        }.buttonStyle(.borderedProminent)
                     }
                 } else if let offer {
                     Form {

@@ -22,7 +22,8 @@ struct WelcomeView: View {
                 }
                 VStack(spacing: 12) {
                     Button(action: connect) {
-                        Text("连接我的开发板").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 7)
+                        Text("连接我的开发板").font(.headline).foregroundStyle(Brand.onAccent)
+                            .frame(maxWidth: .infinity).padding(.vertical, 7)
                     }.buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("welcome-connect")
                         .buttonBorderShape(.roundedRectangle(radius: Layout.cardRadius))
                     Button("先看看演示", action: explore).controlSize(.large).accessibilityIdentifier("welcome-demo")

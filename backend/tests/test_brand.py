@@ -55,6 +55,22 @@ class BrandTests(unittest.TestCase):
         self.assertIn('if let rpm = board.fanRPM',overview)
         self.assertNotIn('历史曲线和通知',overview)
 
+    def test_prominent_button_theme_contrast(self):
+        colors=json.loads((ROOT/'ios/Cubie/Assets.xcassets/AccentColor.colorset/Contents.json').read_text())['colors']
+        def luminance(components):
+            def linear(value):
+                return value/12.92 if value <= 0.04045 else ((value+0.055)/1.055)**2.4
+            return sum(linear(float(components[key]))*weight for key,weight in
+                       [('red',0.2126),('green',0.7152),('blue',0.0722)])
+        light,dark=[luminance(item['color']['components']) for item in colors]
+        self.assertGreaterEqual(1.05/(light+0.05),4.5)
+        self.assertGreaterEqual((dark+0.05)/0.05,4.5)
+        brand=(ROOT/'ios/Cubie/Brand.swift').read_text(encoding='utf-8')
+        self.assertIn('onAccent = Color(uiColor: .systemBackground)',brand)
+        for name in ['WelcomeView','SettingsView','PairingView']:
+            source=(ROOT/f'ios/Cubie/{name}.swift').read_text(encoding='utf-8')
+            self.assertIn('.foregroundStyle(Brand.onAccent)',source)
+
     def test_workflow_requires_modern_sdk(self):
         workflow=(ROOT/'.github/workflows/build-ios.yml').read_text()
         self.assertEqual(workflow.count('DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer'),2)

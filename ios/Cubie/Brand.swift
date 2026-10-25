@@ -13,6 +13,7 @@ enum Brand {
     static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.4.0"
     static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "5"
     static let accent = Color("AccentColor")
+    static let onAccent = Color(uiColor: .systemBackground)
 }
 
 enum AppTab: String, CaseIterable {
