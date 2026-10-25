@@ -14,8 +14,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  privacy:
+    name: Privacy gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python tools/privacy_check.py
+
   backend:
     name: Backend tests
+    needs: privacy
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,6 +43,7 @@ jobs:
 
   ios-tests:
     name: iOS simulator tests
+    needs: privacy
     runs-on: macos-15
     timeout-minutes: 25
     env:
@@ -96,6 +109,7 @@ jobs:
 
   docker-server:
     name: Docker server (${{ matrix.arch }})
+    needs: privacy
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
