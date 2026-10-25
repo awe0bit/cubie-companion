@@ -10,6 +10,6 @@ COPY backend/*.py ./
 COPY backend/web ./web
 USER 10001:10001
 EXPOSE 18766
-HEALTHCHECK --interval=15s --timeout=3s --start-period=15s --retries=3 \
-  CMD python -c "import urllib.request; r=urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:18766/pair',timeout=2); assert r.status==200"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD python -c "import socket; s=socket.create_connection(('127.0.0.1',18766),3); s.sendall(b'GET /pair HTTP/1.0\r\nHost: localhost\r\n\r\n'); assert b' 200 ' in s.makefile('rb').readline(128); s.close()"
 CMD ["python", "/app/bootstrap.py"]
