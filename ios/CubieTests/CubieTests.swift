@@ -29,6 +29,13 @@ final class CubieTests: XCTestCase {
         XCTAssertNotNil(first.token.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression))
     }
 
+    func testPairingAccessHandoffValidation() throws {
+        try PairingAccess(clientID: String(repeating: "a", count: 32) + ".access",
+                          clientSecret: String(repeating: "b", count: 64)).validate()
+        XCTAssertThrowsError(try PairingAccess(clientID: "short", clientSecret: String(repeating: "b", count: 64)).validate())
+        XCTAssertThrowsError(try PairingAccess(clientID: String(repeating: "a", count: 32), clientSecret: "bad\nheader").validate())
+    }
+
     @MainActor func testBrandAssetsAndPrivacyManifestBundled() throws {
         XCTAssertEqual(Brand.name, "CoreNest")
         XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "栖核")

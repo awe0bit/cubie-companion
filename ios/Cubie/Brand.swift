@@ -10,8 +10,8 @@ enum Brand {
     static let name = "CoreNest"
     static let chineseName = "栖核"
     static let tagline = "让设备与服务，各归其位。"
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.3.0"
-    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "3"
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.3.1"
+    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "4"
     static let accent = Color("AccentColor")
 }
 

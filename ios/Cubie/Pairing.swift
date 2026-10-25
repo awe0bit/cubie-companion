@@ -2,12 +2,25 @@ import Foundation
 import CryptoKit
 import Security
 
+struct PairingAccess: Codable {
+    let clientID: String
+    let clientSecret: String
+
+    func validate() throws {
+        guard clientID.range(of: "^[A-Za-z0-9._-]{16,160}$", options: .regularExpression) != nil,
+              clientSecret.range(of: "^[A-Za-z0-9_-]{32,160}$", options: .regularExpression) != nil else {
+            throw ConnectionError.accessPair
+        }
+    }
+}
+
 struct PairingOffer: Decodable {
     let type: String
     let version: Int
     let endpoint: String
     let ticket: String
     let expiresAt: Double
+    let access: PairingAccess?
 
     static func parse(_ text: String, now: Date = Date()) throws -> PairingOffer {
         guard text.utf8.count <= 1024,
@@ -19,6 +32,7 @@ struct PairingOffer: Decodable {
             throw ConnectionError.rejected("二维码无效或已过期。请在部署终端生成新的配对码。")
         }
         _ = try APIClient.normalizedURL(offer.endpoint)
+        try offer.access?.validate()
         return offer
     }
 }
@@ -27,6 +41,7 @@ struct PairingResult: Decodable {
     let state: String
     let deviceId: String?
     let verificationCode: String?
+    let access: PairingAccess?
 }
 
 final class PairingClient {
@@ -66,6 +81,10 @@ final class PairingClient {
         var request = URLRequest(url: base.appendingPathComponent("v1/pairing/" + path))
         request.httpMethod = body == nil ? "GET" : "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let access = offer.access {
+            request.setValue(access.clientID, forHTTPHeaderField: "CF-Access-Client-Id")
+            request.setValue(access.clientSecret, forHTTPHeaderField: "CF-Access-Client-Secret")
+        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)

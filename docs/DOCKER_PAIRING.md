@@ -66,7 +66,9 @@ docker compose exec -T server python /app/pairing.py revoke 设备ID
 
 配对不是网络穿透。要从手机互联网访问，需独立 HTTPS hostname 指向 `http://127.0.0.1:18766`。不能填 `ssh.example.com`，不能把 loopback URL 直接拿给异地手机，不开放校园网入站。
 
-现有安全约定要求公网 API 在 Cloudflare Access 后。当前扫码客户端不会自动获得或绕过 Access 的服务凭据，也不会接管浏览器登录 Cookie。受到 Access 保护但未配置手机专用接入时，部署器预检拒绝创建 QR，App 提示配置接入；**本版还不能称为 Cloudflare Access 下的一键扫码全链路成品**。手动接入保留用于专用手机 Service Auth 凭据；不要复用电脑 SSH token，不配置 Everyone/Bypass 来掩盖缺失的接入能力。
+公网 API 保留 Cloudflare Access。0.3.1 支持由操作者从私有 stdin 提供短期 bootstrap 与独立手机服务凭据：`pairing.py create --access-stdin`。二维码只携带短期 bootstrap，不包含长期手机凭据或账户管理密钥；手机扫码后通过 Access 发起配对，浏览器批准后才经 HTTPS 获取该手机长期凭据。手机首次正常 API 请求确认收取后，服务端清除临时交接副本；拒绝、撤销和重启发现过期时也清除副本。
+
+临时交接数据位于受保护的配对数据库，启用 SQLite secure_delete；不应将运行时数据库或真实 QR 上传。账户管理密钥留在操作者电脑，不复制到主板。操作者负责签发、过期/失败清理及 Access 策略；默认通用部署器不会接管 Cloudflare 账户。不要复用电脑 SSH token，不配置 Everyone/Bypass。
 
 ## 测试范围
 

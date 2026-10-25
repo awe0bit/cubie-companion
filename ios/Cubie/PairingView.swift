@@ -106,8 +106,12 @@ struct PairingView: View {
                     let state = try await client.result()
                     if state.state == "approved" {
                         try Task.checkCancellation()
+                        if offer.access != nil && state.access == nil {
+                            throw ConnectionError.rejected("手机接入凭据已过期或已领取，请重新生成配对码。")
+                        }
+                        try state.access?.validate()
                         try await store.connect(ConnectionCredentials(baseURL: offer.endpoint, apiToken: client.token,
-                            accessClientID: "", accessClientSecret: ""))
+                            accessClientID: state.access?.clientID ?? "", accessClientSecret: state.access?.clientSecret ?? ""))
                         finished = true
                         return
                     }

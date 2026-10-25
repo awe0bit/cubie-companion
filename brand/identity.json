@@ -2,7 +2,7 @@
   "name": "CoreNest",
   "chineseName": "栖核",
   "tagline": "让设备与服务，各归其位。",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "canvas": 1024,
   "strokeWidth": 88,
   "nest": [

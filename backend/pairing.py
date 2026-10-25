@@ -20,6 +20,15 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def access_credentials(value):
+    if (not isinstance(value, dict) or set(value) != {"clientID", "clientSecret"}
+            or not isinstance(value["clientID"], str) or not isinstance(value["clientSecret"], str)
+            or not re.fullmatch(r"[A-Za-z0-9._-]{16,160}", value["clientID"])
+            or not re.fullmatch(r"[A-Za-z0-9_-]{32,160}", value["clientSecret"])):
+        raise ValueError("invalid_access_handoff")
+    return value
+
+
 def endpoint(value):
     parts = urlsplit(value)
     if (parts.scheme != "https" or not parts.hostname or parts.username or parts.password
@@ -34,6 +43,7 @@ class PairingStore:
         self.clock, self.lock = clock, threading.Lock()
         self.db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self.db.execute("PRAGMA busy_timeout=5000")
+        self.db.execute("PRAGMA secure_delete=ON")
         self.db.executescript("""
           CREATE TABLE IF NOT EXISTS grants (
             id TEXT PRIMARY KEY, claim_hash TEXT NOT NULL, manage_hash TEXT NOT NULL,
@@ -44,20 +54,25 @@ class PairingStore:
             role TEXT NOT NULL, created REAL NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);
           CREATE TABLE IF NOT EXISTS pairing_rate (bucket INTEGER PRIMARY KEY, count INTEGER NOT NULL);
         """)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(grants)")}
+        if "access_json" not in columns:
+            self.db.execute("ALTER TABLE grants ADD COLUMN access_json TEXT")
+        self.db.execute("UPDATE grants SET access_json=NULL WHERE expires <= ?", (self.clock(),))
 
-    def create(self, origin, role="viewer", ttl=300):
+    def create(self, origin, role="viewer", ttl=300, access=None):
         origin = endpoint(origin)
         if role not in ("viewer", "admin") or not 30 <= ttl <= 300:
             raise ValueError("invalid_grant")
         ident, claim, manage = secrets.token_hex(12), secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         expires = self.clock() + ttl
+        handoff = json.dumps(access_credentials(access)) if access is not None else None
         with self.lock:
             self.db.execute("BEGIN IMMEDIATE")
             try:
                 # A new QR replaces outstanding offers, never existing paired devices.
                 self.db.execute("DELETE FROM grants WHERE state != 'approved' OR expires < ?", (self.clock() - 3600,))
-                self.db.execute("INSERT INTO grants VALUES (?, ?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, NULL)",
-                                (ident, digest(claim), digest(manage), origin, expires, role))
+                self.db.execute("INSERT INTO grants(id,claim_hash,manage_hash,origin,expires,role,state,access_json) VALUES (?, ?, ?, ?, ?, ?, 'waiting', ?)",
+                                (ident, digest(claim), digest(manage), origin, expires, role, handoff))
                 self.db.execute("COMMIT")
             except Exception:
                 self.db.execute("ROLLBACK")
@@ -122,6 +137,8 @@ class PairingStore:
                 if approve:
                     self.db.execute("INSERT INTO devices(id,token_hash,name,role,created) VALUES (?,?,?,?,?)",
                                     (row[7], row[8], row[9], row[5], self.clock()))
+                else:
+                    self.db.execute("UPDATE grants SET access_json=NULL WHERE id=?", (row[0],))
                 self.db.execute("UPDATE grants SET state=? WHERE id=?", ("approved" if approve else "rejected", row[0]))
                 self.db.execute("COMMIT")
             except Exception:
@@ -136,7 +153,11 @@ class PairingStore:
         with self.lock:
             device = self.db.execute("SELECT id, revoked FROM devices WHERE token_hash=?", (hashed,)).fetchone()
             if device:
-                return {"state": "revoked" if device[1] else "approved", "deviceId": device[0]}
+                result = {"state": "revoked" if device[1] else "approved", "deviceId": device[0]}
+                row = self.db.execute("SELECT access_json,expires FROM grants WHERE device_id=?", (device[0],)).fetchone()
+                if not device[1] and row and row[0] and row[1] > self.clock():
+                    result["access"] = json.loads(row[0])
+                return result
             row = self.db.execute("SELECT state,expires,device_id,code FROM grants WHERE token_hash=?", (hashed,)).fetchone()
             if not row:
                 raise PairingError(401, "pairing_unauthorized")
@@ -146,6 +167,9 @@ class PairingStore:
     def role(self, hashed):
         with self.lock:
             row = self.db.execute("SELECT role FROM devices WHERE token_hash=? AND revoked=0", (hashed,)).fetchone()
+            if row:
+                # First authenticated API call confirms receipt. Wipe the temporary handoff.
+                self.db.execute("UPDATE grants SET access_json=NULL WHERE token_hash=? AND access_json IS NOT NULL", (hashed,))
             return row[0] if row else None
 
     def devices(self):
@@ -156,6 +180,7 @@ class PairingStore:
     def revoke(self, ident):
         with self.lock:
             changed = self.db.execute("UPDATE devices SET revoked=1 WHERE id=?", (ident,)).rowcount
+            self.db.execute("UPDATE grants SET access_json=NULL WHERE device_id=?", (ident,))
         return changed == 1
 
 
@@ -170,6 +195,7 @@ def main():
     create = sub.add_parser("create")
     create.add_argument("--endpoint", required=True)
     create.add_argument("--role", choices=("viewer", "admin"), default="viewer")
+    create.add_argument("--access-stdin", action="store_true", help="Private optional bootstrap/device Access credentials via stdin, never arguments")
     sub.add_parser("list")
     revoke = sub.add_parser("revoke")
     revoke.add_argument("device_id")
@@ -178,10 +204,23 @@ def main():
     store = PairingStore(args.database)
     try:
         if args.command == "create":
-            grant = store.create(args.endpoint, args.role)
+            access = None
+            if args.access_stdin:
+                raw = sys.stdin.buffer.read(2049)
+                if len(raw) > 2048:
+                    raise ValueError("invalid_access_handoff")
+                access = json.loads(raw)
+                if not isinstance(access, dict) or set(access) != {"bootstrap", "device"}:
+                    raise ValueError("invalid_access_handoff")
+                access_credentials(access["bootstrap"])
+                access_credentials(access["device"])
+            grant = store.create(args.endpoint, args.role, access=access["device"] if access else None)
             # Ticket only lives in the browser fragment, never URLs sent to a web server.
-            payload = json.dumps({"type": "corenest-pair", "version": 1, "endpoint": grant["endpoint"],
-                                  "ticket": grant["ticket"], "expiresAt": grant["expiresAt"]}, separators=(",", ":"))
+            payload_value = {"type": "corenest-pair", "version": 1, "endpoint": grant["endpoint"],
+                             "ticket": grant["ticket"], "expiresAt": grant["expiresAt"]}
+            if access:
+                payload_value["access"] = access["bootstrap"]
+            payload = json.dumps(payload_value, separators=(",", ":"))
             print(json.dumps({"fragment": urlencode({"manager": grant["manager"], "offer": payload}),
                               "expiresAt": grant["expiresAt"]}))
         elif args.command == "list":

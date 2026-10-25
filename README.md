@@ -4,7 +4,7 @@
 
 让设备与服务，各归其位。
 
-面向自托管开发板的原生控制台，**0.3.0 开发预览**。本仓库维护两个组件：
+面向自托管开发板的原生控制台，**0.3.1 开发预览**。本仓库维护两个组件：
 
 - **CoreNest Server**：Docker API、限时配对网页和低权限主板指标桥。
 - **CoreNest iOS**：SwiftUI 原生应用，iOS 26 使用系统 Liquid Glass 标签栏，旧系统保留原生标签栏。
@@ -28,6 +28,8 @@ python tools/pair_device.py --ssh board --endpoint https://board.example.com
 iPhone「设置 → 扫码绑定开发板」→ 确认域名 → 核对两端六位码 → 浏览器批准。二维码五分钟过期，不携带长期 API/Cloudflare 密钥。每台手机本地生成独立 Token，服务端仅保存摘要，可分别撤销，重启保留绑定，默认只读。
 
 无桌面主板不能直接打开远方电脑的浏览器。HTTPS、网络穿透和 Cloudflare Access 必须单独配置；二维码不会自动绕过 Access。尚无手机专用接入时不能关闭网关来掩盖配置缺失。
+
+0.3.1 增加可选 Access 安全交接：操作者先向 Cloudflare 签发限时 bootstrap 与该手机独立的设备服务凭据，通过 `pairing.py create --access-stdin` 从私有 stdin 输入。二维码仅携带短期 bootstrap；浏览器批准后才经 HTTPS 交付长期手机凭据，首次成功 API 访问后清除服务端临时副本。Cloudflare 管理令牌不得部署到主板。此模式需要操作者配置签发流程，默认通用部署器不会自行管理 Cloudflare 账户。
 
 ## 功能与权限
 

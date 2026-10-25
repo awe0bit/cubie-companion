@@ -135,6 +135,36 @@ class PairingTests(unittest.TestCase):
         for origin in ("http://example.com", "https://u:p@example.com", "https://example.com:443", "https://example.com/a", "https://example.com?q=a"):
             with self.assertRaises(ValueError): endpoint(origin)
 
+    def test_access_handoff_requires_approval_and_is_wiped_after_api_receipt(self):
+        access = {"clientID": "a" * 32 + ".access", "clientSecret": "d" * 64}
+        self.grant = self.store.create("https://board.example.com", access=access)
+        self.request()
+        self.assertNotIn("access", self.store.result(self.token))
+        self.assertNotIn("access", self.store.offer(self.grant["manager"]))
+        self.store.decide(self.grant["manager"], True)
+        self.assertEqual(self.store.result(self.token)["access"], access)
+        self.assertEqual(self.store.role(self.hash), "viewer")
+        self.assertNotIn("access", self.store.result(self.token))
+        stored = (Path(self.folder.name) / "pair.sqlite3").read_bytes()
+        self.assertNotIn(access["clientSecret"].encode(), stored)
+
+    def test_rejected_and_expired_access_handoffs_are_cleared(self):
+        access = {"clientID": "a" * 32 + ".access", "clientSecret": "d" * 64}
+        self.grant = self.store.create("https://board.example.com", access=access)
+        self.request(); self.store.decide(self.grant["manager"], False)
+        self.assertIsNone(self.store.db.execute("SELECT access_json FROM grants").fetchone()[0])
+        self.grant = self.store.create("https://board.example.com", access=access)
+        self.now += 301
+        self.store.db.close()
+        self.store = PairingStore(Path(self.folder.name) / "pair.sqlite3", clock=lambda: self.now)
+        self.assertIsNone(self.store.db.execute("SELECT access_json FROM grants").fetchone()[0])
+
+    def test_access_handoff_validation(self):
+        for access in ({}, {"clientID": "short", "clientSecret": "x" * 64},
+                       {"clientID": "a" * 32, "clientSecret": "x\ny"},
+                       {"clientID": "a" * 32, "clientSecret": "x" * 64, "extra": "bad"}):
+            with self.assertRaises(ValueError): self.store.create("https://board.example.com", access=access)
+
     def web(self, path, data=None, manager=None, method="POST", **extra):
         raw = json.dumps(data).encode() if data is not None else b""
         env = {"PATH_INFO": path, "REQUEST_METHOD": method, "CONTENT_TYPE": "application/json",
