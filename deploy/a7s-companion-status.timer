@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh sanitized campus status for A7S Companion
+
+[Timer]
+OnBootSec=15
+OnUnitInactiveSec=30
+AccuracySec=5
+Unit=a7s-companion-status.service
+
+[Install]
+WantedBy=timers.target

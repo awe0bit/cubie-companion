@@ -1,0 +1,31 @@
+name: corenest
+services:
+  server:
+    image: corenest-server:0.3.0
+    build: .
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    ports:
+      - "127.0.0.1:18766:18766"
+    volumes:
+      - state:/data
+      - type: bind
+        source: /run/corenest-host
+        target: /host-telemetry
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    logging:
+      driver: json-file
+      options: {max-size: 2m, max-file: "2"}
+volumes:
+  state:

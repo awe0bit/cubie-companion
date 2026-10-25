@@ -1,0 +1,22 @@
+{
+  "images": [
+    {
+      "filename": "CoreNestMark-light.png",
+      "idiom": "universal"
+    },
+    {
+      "filename": "CoreNestMark-dark.png",
+      "idiom": "universal",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

@@ -1,0 +1,11 @@
+* text=auto
+*.py text eol=lf
+*.swift text eol=lf
+*.yml text eol=lf
+*.pbxproj text eol=lf
+*.xcscheme text eol=lf
+*.service text eol=lf
+*.socket text eol=lf
+*.timer text eol=lf
+*.sh text eol=lf
+.githooks/* text eol=lf

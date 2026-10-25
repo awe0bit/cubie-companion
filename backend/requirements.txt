@@ -1,0 +1,4 @@
+# Board Python 3.9; same production HTTP stack on Windows and Linux.
+waitress==3.0.2
+qrcode==8.2
+pypng==0.20220715.0

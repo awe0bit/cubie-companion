@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!backend/
+!backend/*.py
+!backend/requirements.txt
+!backend/web/
+!backend/web/**

@@ -1,0 +1,180 @@
+name: Build CoreNest unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cubie-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.9'
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python tools/privacy_check.py
+      - run: python -m unittest discover -s backend/tests -v
+      - run: python backend/verify_http.py
+      - run: python tools/verify_sources.py
+
+  ios-tests:
+    name: iOS simulator tests
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Inspect Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -list -project ios/Cubie.xcodeproj
+      - name: Build simulator app and tests
+        id: simulator_build
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild -project ios/Cubie.xcodeproj -scheme Cubie \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO \
+            build-for-testing 2>&1 | tee build/simulator-build.log
+      - name: Select iOS 26 iPhone simulator
+        run: python3 tools/select_simulator.py
+      - name: Run XCTest
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/Cubie.xcodeproj -scheme Cubie \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath build/simulator -resultBundlePath build/TestResults.xcresult \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
+            test-without-building 2>&1 | tee build/simulator-tests.log
+      - name: Capture real iOS 26 light and dark screenshots
+        if: ${{ !cancelled() && steps.simulator_build.outcome == 'success' && env.DEVICE_ID != '' }}
+        run: python3 tools/capture_screenshots.py --device "$DEVICE_ID" --app build/simulator/Build/Products/Debug-iphonesimulator/Cubie.app --output build/screenshots
+      - name: Select legacy iPhone simulator
+        run: python3 tools/select_simulator.py --legacy
+      - name: Verify older iOS native tab fallback
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/Cubie.xcodeproj -scheme Cubie \
+            -destination "platform=iOS Simulator,id=$LEGACY_DEVICE_ID" \
+            -derivedDataPath build/simulator -resultBundlePath build/LegacyResults.xcresult \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
+            test-without-building 2>&1 | tee build/legacy-tests.log
+      - name: Upload native screenshots
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: CoreNest-native-screenshots
+          path: build/screenshots
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Save simulator build logs and tests
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: cubie-simulator-results
+          path: |
+            build/*.log
+            build/TestResults.xcresult
+            build/LegacyResults.xcresult
+          retention-days: 14
+          if-no-files-found: ignore
+
+  docker-server:
+    name: Docker server (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Validate Compose and build real container
+        run: |
+          docker compose config --quiet
+          docker buildx build --platform linux/${{ matrix.arch }} --load -t corenest-server:0.3.0 .
+      - name: Verify QR pairing, approval, persistence and revocation
+        run: python3 tools/verify_container.py --platform ${{ matrix.arch }}
+      - name: Package loadable server image
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p build/docker
+          docker save corenest-server:0.3.0 | gzip > build/docker/CoreNest-server-${{ matrix.arch }}.tar.gz
+          cd build/docker
+          sha256sum CoreNest-server-${{ matrix.arch }}.tar.gz > CoreNest-server-${{ matrix.arch }}.tar.gz.sha256
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: github.event_name != 'pull_request'
+        with:
+          name: CoreNest-Docker-${{ matrix.arch }}
+          path: build/docker/
+          retention-days: 14
+          compression-level: 0
+
+  unsigned-ipa:
+    name: Build unsigned device IPA
+    needs: [backend, ios-tests, docker-server]
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build arm64 iPhoneOS app without signing
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild -version
+          xcodebuild -project ios/Cubie.xcodeproj -scheme Cubie \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' \
+            build 2>&1 | tee build/device-build.log
+      - name: Package and verify unsigned IPA
+        run: python3 tools/package_ipa.py --app build/device/Build/Products/Release-iphoneos/Cubie.app --output build/artifacts/CoreNest-unsigned.ipa
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: CoreNest-unsigned-ipa
+          path: |
+            build/artifacts/CoreNest-unsigned.ipa
+            build/artifacts/CoreNest-unsigned.ipa.sha256
+            build/artifacts/manifest.json
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+      - name: Save device build log
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: cubie-device-build-log
+          path: build/device-build.log
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Build summary
+        run: |
+          {
+            echo '## 栖核 CoreNest unsigned IPA'
+            echo 'Download **CoreNest-unsigned-ipa** and **CoreNest-native-screenshots** from the artifacts below.'
+            echo 'This is an arm64 iPhoneOS application, not a simulator build.'
+            echo '**Unsigned:** re-sign with your own valid identity/provisioning before installing on iPhone.'
+            echo 'No Apple certificate, provisioning profile, device credential, or Cloudflare token was used.'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,20 @@
+{
+  "name": "CoreNest",
+  "chineseName": "栖核",
+  "tagline": "让设备与服务，各归其位。",
+  "version": "0.3.0",
+  "canvas": 1024,
+  "strokeWidth": 88,
+  "nest": [
+    ["M", 744, 280], ["L", 456, 280],
+    ["C", 359, 280, 280, 359, 280, 456], ["L", 280, 568],
+    ["C", 280, 665, 359, 744, 456, 744], ["L", 744, 744]
+  ],
+  "core": [428, 420, 636, 604, 54],
+  "node": [732, 468, 820, 556, 32],
+  "palettes": {
+    "light": {"background": "#E9F6F0", "nest": "#173F3A", "core": "#269C80", "node": "#173F3A"},
+    "dark": {"background": "#102622", "nest": "#D7F3E7", "core": "#6BD6B4", "node": "#6BD6B4"},
+    "tinted": {"background": "#161616", "nest": "#EAEAEA", "core": "#B8B8B8", "node": "#EAEAEA"}
+  }
+}

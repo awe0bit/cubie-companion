@@ -1,0 +1,12 @@
+[Unit]
+Description=A7S Companion optional restricted control socket
+
+[Socket]
+ListenStream=/run/a7s-companion-control.sock
+SocketUser=root
+SocketGroup=a7s-companion
+SocketMode=0660
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

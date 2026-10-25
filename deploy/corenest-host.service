@@ -1,0 +1,27 @@
+[Unit]
+Description=CoreNest minimal read-only host telemetry bridge
+After=NetworkManager.service
+
+[Service]
+Type=simple
+User=a7s-companion
+Group=a7s-companion
+ExecStart=/usr/bin/python3 /opt/corenest/backend/host_bridge.py
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=corenest-host
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+UMask=0022
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+ReadWritePaths=/run/corenest-host
+
+[Install]
+WantedBy=multi-user.target

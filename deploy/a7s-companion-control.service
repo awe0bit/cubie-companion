@@ -1,0 +1,22 @@
+[Unit]
+Description=A7S Companion restricted root broker
+Requires=a7s-companion-control.socket
+After=a7s-companion-control.socket
+
+[Service]
+ExecStart=/usr/bin/python3 -I /opt/a7s-companion/backend/control.py
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=32M
+TasksMax=8
+UMask=0077
