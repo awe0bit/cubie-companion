@@ -135,6 +135,7 @@ final class BoardStore: ObservableObject {
                     managementError = value.dockerAvailable ? nil : "Docker 暂不可用，列表未代表全部服务。"
                 } catch {
                     guard revision == generation, !Task.isCancelled else { return }
+                    managementLastContact = nil
                     managementError = "控制信息暂不可用，操作已暂停。"
                 }
             } else {
@@ -177,7 +178,7 @@ final class BoardStore: ObservableObject {
             notice = result.accepted ? "操作已受理，实际结果请查看刷新后的服务状态。" : "操作未被受理。"
         } catch {
             guard revision == generation else { return }
-            self.error = "操作结果可能尚未确认，请先刷新，不要连续重试。\(error.localizedDescription)"
+            notice = "操作结果可能尚未确认，请先刷新，不要连续重试。\(error.localizedDescription)"
         }
         await refresh()
     }
@@ -222,7 +223,7 @@ final class BoardStore: ObservableObject {
             notice = result.accepted ? "操作已执行，正在刷新实际状态。" : "操作未执行，请检查权限。"
         } catch {
             guard revision == generation else { return }
-            self.error = "操作结果未确认，请刷新后检查，不要连续重试。\(error.localizedDescription)"
+            notice = "操作结果未确认，请刷新后检查，不要连续重试。\(error.localizedDescription)"
         }
         await refresh()
     }

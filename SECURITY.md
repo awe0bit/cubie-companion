@@ -9,10 +9,19 @@ CoreNest 仍在开发预览阶段，尚未完成独立安全审计，不应当�
 - 配对 ticket 与网页批准秘密分离，五分钟过期、一次申请、浏览器六位码核对批准；二维码不携带长期 API 或 Cloudflare 密钥。扫码不绕过 Cloudflare Access。
 - Docker 默认 loopback 发布、非 root、只读根文件系统、capabilities 全部移除；不挂载 Docker socket。真实主板指标经低权限宿主机导出桥读取，失效明确报错。
 - iOS 使用本机 Keychain、正常 TLS 验证、不跟随带凭据请求的重定向、不上传第三方统计。
-- 控制默认关闭；root broker 未启用，校园网、Tunnel、SSH 和网络管理器不是控制白名单。
+- 控制默认关闭；0.7 支持操作者显式安装固定操作 root broker。校园网、Tunnel、SSH、网络管理器与管理容器自身不在控制白名单。
 - 保留现有验证码暂停、频率预算、认证目录权限及会话，不因 UI 更新改变它们。
 - 隐私清单声明应用私有 UserDefaults 的使用；连接到用户配置的服务时，Cloudflare/目标服务仍可能记录连接信息。
 - Debug 截图模式不读取保存的凭据、不联网；Release 中不可用。
+
+## 可选管理组件
+
+API 容器仍以非 root 运行，不挂载 Docker socket。宿主机 broker 验证 Unix
+peer UID；指标采集用户只能读取快照，只有配置的 API UID 可请求修改。指示灯仅开放
+操作者指定的 sysfs 目录；Docker 仅接受已加入白名单的现有容器 ID 和固定启停动作。
+HTTP 层还要求管理员绑定、显式开关、幂等键与冷却。没有远程 shell、任意参数、创建或
+删除容器、拉取镜像、删除卷等操作。启用此组件会扩大宿主机受信任面，并不代表已完成
+独立安全审计。详见[管理组件部署边界](docs/DEVICE-CONTROL.md)。
 
 ## 报告问题
 

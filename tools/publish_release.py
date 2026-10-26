@@ -33,7 +33,7 @@ def main():
     sums.write_text(hashlib.sha256(named.read_bytes()).hexdigest() + '  ' + named.name + '\n')
     subprocess.run(['gh', 'release', 'create', tag, '--repo', repo,
                     '--target', manifest['sourceCommit'], '--title', 'CoreNest ' + version,
-                    '--notes', 'Native iOS control console. Unsigned IPA: sign with your own valid identity. '
+                    '--notes', 'Development preview: native iOS control console. Unsigned IPA: sign with your own valid identity. '
                     'Pages support OTA only after independent Expo project authorization. '
                     'No board or Apple credentials are included.', str(named), str(sums), str(folder / 'manifest.json')], check=True)
 

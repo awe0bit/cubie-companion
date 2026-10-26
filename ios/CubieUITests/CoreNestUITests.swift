@@ -47,6 +47,7 @@ final class CoreNestUITests: XCTestCase {
         snapshot("welcome-light")
         explore(app)
         XCTAssertTrue(app.buttons["overview-connect"].exists)
+        XCTAssertTrue(app.buttons["overview-controls"].isHittable, "Compact overview should expose controls without scrolling")
         snapshot("overview-light")
         for title in ["服务", "设备"] {
             app.tabBars.buttons[title].tap()
@@ -101,6 +102,7 @@ final class CoreNestUITests: XCTestCase {
         let app = launch()
         explore(app)
         app.tabBars.buttons["服务"].tap()
+        XCTAssertEqual(app.tabBars.count, 1)
         let panel = app.buttons["service-panel"]
         reveal(panel, app: app)
         panel.tap()
