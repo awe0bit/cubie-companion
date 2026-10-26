@@ -9,6 +9,7 @@ import subprocess
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--legacy',action='store_true')
+    parser.add_argument('--prepare',action='store_true',help='Boot the selected runtime with a finite startup timeout')
     args=parser.parse_args()
     devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','-j']))
     candidates=[]
@@ -25,8 +26,13 @@ def main():
     _,device,runtime=max(candidates,key=lambda x:x[0])
     if os.environ.get('GITHUB_ENV'):
         key='LEGACY_DEVICE_ID' if args.legacy else 'DEVICE_ID'
-        with open(os.environ['GITHUB_ENV'],'a') as stream:stream.write(key+'='+device['udid']+'\n')
-    print(json.dumps({'device':device['name'],'runtime':runtime,'udid':device['udid']}))
+        with open(os.environ['GITHUB_ENV'],'a') as stream:
+            stream.write(key+'='+device['udid']+'\nTEST_DEVICE_ID='+device['udid']+'\n')
+    print(json.dumps({'device':device['name'],'runtime':runtime,'udid':device['udid']}),flush=True)
+    if args.prepare:
+        if device.get('state') != 'Booted':
+            subprocess.run(['xcrun','simctl','boot',device['udid']],check=True,timeout=45)
+        subprocess.run(['xcrun','simctl','bootstatus',device['udid'],'-b'],check=True,timeout=270)
 
 
 if __name__=='__main__':main()

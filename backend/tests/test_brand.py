@@ -75,6 +75,9 @@ class BrandTests(unittest.TestCase):
         workflow=(ROOT/'.github/workflows/build-ios.yml').read_text()
         self.assertEqual(workflow.count('DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer'),2)
         self.assertIn('tools/select_simulator.py --legacy',workflow)
+        self.assertIn('runtime: [modern, legacy]',workflow)
+        self.assertIn('tools/select_simulator.py --prepare',workflow)
+        self.assertIn('$TEST_DEVICE_ID',workflow)
         self.assertIn('CoreNest-native-screenshots',workflow)
 
 

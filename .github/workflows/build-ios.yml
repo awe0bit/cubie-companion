@@ -42,10 +42,14 @@ jobs:
       - run: python tools/verify_sources.py
 
   ios-tests:
-    name: iOS simulator tests
+    name: iOS simulator tests (${{ matrix.runtime }})
     needs: privacy
     runs-on: macos-15
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [modern, legacy]
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
@@ -64,32 +68,27 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO \
             build-for-testing 2>&1 | tee build/simulator-build.log
-      - name: Select iOS 26 iPhone simulator
-        run: python3 tools/select_simulator.py
+      - name: Boot one isolated runtime with a bounded startup
+        run: |
+          if [[ "${{ matrix.runtime }}" == "legacy" ]]; then
+            python3 tools/select_simulator.py --legacy --prepare
+          else
+            python3 tools/select_simulator.py --prepare
+          fi
       - name: Run XCTest
         run: |
           set -o pipefail
           xcodebuild -project ios/Cubie.xcodeproj -scheme Cubie \
-            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -destination "platform=iOS Simulator,id=$TEST_DEVICE_ID" -destination-timeout 90 \
             -derivedDataPath build/simulator -resultBundlePath build/TestResults.xcresult \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
             test-without-building 2>&1 | tee build/simulator-tests.log
       - name: Capture real iOS 26 light and dark screenshots
-        if: ${{ !cancelled() && steps.simulator_build.outcome == 'success' && env.DEVICE_ID != '' }}
+        if: ${{ !cancelled() && matrix.runtime == 'modern' && steps.simulator_build.outcome == 'success' && env.DEVICE_ID != '' }}
         run: python3 tools/capture_screenshots.py --device "$DEVICE_ID" --app build/simulator/Build/Products/Debug-iphonesimulator/Cubie.app --output build/screenshots
-      - name: Select legacy iPhone simulator
-        run: python3 tools/select_simulator.py --legacy
-      - name: Verify older iOS native tab fallback
-        run: |
-          set -o pipefail
-          xcodebuild -project ios/Cubie.xcodeproj -scheme Cubie \
-            -destination "platform=iOS Simulator,id=$LEGACY_DEVICE_ID" \
-            -derivedDataPath build/simulator -resultBundlePath build/LegacyResults.xcresult \
-            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO \
-            test-without-building 2>&1 | tee build/legacy-tests.log
       - name: Upload native screenshots
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
+        if: ${{ always() && matrix.runtime == 'modern' }}
         with:
           name: CoreNest-native-screenshots
           path: build/screenshots
@@ -99,11 +98,10 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
-          name: cubie-simulator-results
+          name: cubie-simulator-results-${{ matrix.runtime }}
           path: |
             build/*.log
             build/TestResults.xcresult
-            build/LegacyResults.xcresult
           retention-days: 14
           if-no-files-found: ignore
 
