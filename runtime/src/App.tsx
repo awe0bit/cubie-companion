@@ -32,7 +32,10 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
 
   const text = (value: string, secondary = false, large = false) => <Text style={{ color: secondary ? colors.quiet : colors.ink, fontSize: large ? 30 : 15, fontWeight: large ? '700' : '400' }}>{value}</Text>;
   const card = (children: React.ReactNode, key?: string) => <View key={key} style={[styles.card, { backgroundColor: colors.surface }]}>{children}</View>;
-  const row = (label: string, value: string) => <View key={label} style={[styles.info, fontScale > 1.4 && { flexDirection: 'column', alignItems: 'flex-start' }]}>{text(label, true)}{text(value)}</View>;
+  const row = (label: string, value: string) => <View key={label} style={[styles.info, fontScale > 1.4 && { flexDirection: 'column', alignItems: 'flex-start' }]}>
+    <Text style={{ color: colors.quiet, fontSize: 15 }}>{label}</Text>
+    <Text selectable style={{ color: colors.ink, fontSize: 15, flexShrink: 1, textAlign: fontScale > 1.4 ? 'left' : 'right' }}>{value}</Text>
+  </View>;
   const link = (title: string, subtitle: string, action: string, id: string, deviceID?: string, symbol = '↗') => (
     <Pressable key={id} accessibilityRole="button" accessibilityLabel={title} testID={id} onPress={() => act(action, deviceID)}
       style={({ pressed }) => [styles.link, { opacity: pressed ? .55 : 1 }]}>
@@ -41,7 +44,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
     </Pressable>
   );
   const metric = (title: string, value: string, detail = '') => <View key={title} style={{ width: oneColumn ? '100%' : '48%' }}>
-    {card(<>{text(title, true)}<Text style={{ color: colors.ink, fontSize: 28, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>{detail ? text(detail, true) : null}</>)}
+    {card(<>{text(title, true)}<Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.7} style={{ color: colors.ink, fontSize: 28, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>{detail ? text(detail, true) : null}</>)}
   </View>;
   const b = snapshot.status;
   const hardware = snapshot.inventory;
@@ -58,7 +61,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
         {snapshot.demo && card(link('绑定开发板', '扫码后查看真实状态', 'open.binding', 'overview-connect'))}
         {b ? <>
           {card(<>
-            <View style={styles.heading}>{text(b.hostname, false)}<Text style={{ color: colors.accent }}>CORENEST</Text></View>
+            <View style={styles.heading}><Text style={{ color: colors.ink, fontSize: 17, fontWeight: '600', flexShrink: 1 }}>{b.hostname}</Text><Text style={{ color: colors.accent }}>CORENEST</Text></View>
             {text('Cubie A7S', true)}
             {b.temperatures.length > 0 && <View style={styles.temperature}>
               <Text style={{ color: colors.ink, fontSize: 52, fontWeight: '500', fontVariant: ['tabular-nums'] }}>{Math.max(...b.temperatures.map(t => t.celsius)).toFixed(1)}°</Text>

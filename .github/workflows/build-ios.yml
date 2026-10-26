@@ -249,15 +249,25 @@ jobs:
       CI: '1'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Restore exact native runtime package
+        id: runtime_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: runtime/artifacts/CoreNestRuntimePackage-release
+          key: ${{ runner.os }}-corenest-xcode263-${{ hashFiles('runtime/package-lock.json', 'runtime/app.config.js', 'runtime/runtime-version.txt', 'runtime/src/**', 'runtime/index.ts', 'runtime/babel.config.js', 'runtime/metro.config.js') }}-${{ vars.CORENEST_EXPO_PROJECT_ID || 'embedded-only' }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.runtime_cache.outputs.cache-hit != 'true'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: runtime/package-lock.json
       - run: npm ci --no-audit --no-fund
+        if: steps.runtime_cache.outputs.cache-hit != 'true'
       - name: Generate isolated runtime (no Apple identity)
+        if: steps.runtime_cache.outputs.cache-hit != 'true'
         run: npm run prebuild:ios
       - name: Build device and simulator XCFrameworks
+        if: steps.runtime_cache.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
           npm run build:ios 2>&1 | tee runtime-build.log

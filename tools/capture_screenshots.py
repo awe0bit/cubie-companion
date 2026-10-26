@@ -27,22 +27,22 @@ def main():
         for tab in ['overview','services','devices']:
             call('terminate',args.device,BUNDLE,check=False)
             call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab',tab,'--preview-appearance',appearance)
-            time.sleep(2)
+            time.sleep(10)  # Cold native/runtime startup must finish before taking a screenshot.
             call('io',args.device,'screenshot',str(args.output/(tab+'-'+appearance+'.png')))
     for appearance in ['light','dark']:
         call('terminate',args.device,BUNDLE,check=False)
         call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','devices','--preview-detail','binding','--preview-appearance',appearance)
-        time.sleep(2)
+        time.sleep(10)
         call('io',args.device,'screenshot',str(args.output/('binding-'+appearance+'.png')))
     for appearance in ['light','dark']:
         call('terminate',args.device,BUNDLE,check=False)
         call('launch',args.device,BUNDLE,'--ui-testing','--preview-appearance',appearance)
-        time.sleep(2)
+        time.sleep(10)
         call('io',args.device,'screenshot',str(args.output/('welcome-'+appearance+'.png')))
     call('terminate',args.device,BUNDLE,check=False)
     call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','devices','--preview-detail','binding','--preview-appearance','light',
          '-UIPreferredContentSizeCategoryName','UICTContentSizeCategoryAccessibilityXXXL')
-    time.sleep(2)
+    time.sleep(10)
     call('io',args.device,'screenshot',str(args.output/'settings-accessibility.png'))
     print('Captured 11 real simulator screenshots; all displayed data are demo fixtures.')
 

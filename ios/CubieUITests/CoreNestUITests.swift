@@ -18,7 +18,7 @@ final class CoreNestUITests: XCTestCase {
         if !button.isHittable { app.scrollViews.firstMatch.swipeUp() }
         button.tap()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.scrollViews["runtime-overview"].waitForExistence(timeout: 15), "Must exercise embedded runtime, not silently pass with native fallback")
+        XCTAssertTrue(app.descendants(matching: .any)["runtime-overview"].firstMatch.waitForExistence(timeout: 15), "Must exercise embedded runtime, not silently pass with native fallback")
     }
 
     private func snapshot(_ name: String) {

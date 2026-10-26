@@ -101,6 +101,9 @@ final class RuntimeBridge: ObservableObject {
               UUID(uuidString: client) != nil else { return }
         if action == "ready" {
             readyClients.insert(client)
+            #if DEBUG
+            NSLog("CORENEST_RUNTIME_READY")
+            #endif
             emit()
             return
         }
