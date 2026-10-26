@@ -11,7 +11,7 @@ struct OverviewView: View {
     var body: some View {
         Page {
             if store.demo {
-                Button { navigation.selection = .settings } label: {
+                Button { navigation.selection = .devices } label: {
                     Card {
                         HStack(spacing: 12) {
                             Image(systemName: "qrcode.viewfinder").font(.title2).foregroundStyle(Brand.accent)

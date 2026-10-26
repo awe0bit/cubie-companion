@@ -210,6 +210,7 @@ class HostBridgeTests(unittest.TestCase):
             collector = FileCollector(folder)
             self.assertEqual(collector.snapshot()["hostname"], "fixture")
             self.assertEqual(collector.services(), {"services": []})
+            self.assertEqual(collector.devices()['devices'], [])
             with self.assertRaises(APIError): collector.logs("panel")
 
 

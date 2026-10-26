@@ -46,7 +46,17 @@ final class CubieTests: XCTestCase {
     }
 
     func testNavigationHasThreeStableTabs() {
-        XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "settings"])
+        XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "devices"])
+    }
+
+    func testHardwareWireFormatAndOldCapabilityCompatibility() throws {
+        let raw = #"{"sampledAt":"2026-01-01T09:41:00Z","board":{"model":"Fixture board","architecture":"aarch64","kernel":"Linux","cpuCores":4,"memoryBytes":4294967296},"devices":[{"id":"usb:fixture","category":"usb","name":"Fixture camera","node":"1-2","bus":"usb","driver":"uvcvideo","state":"detected","vendorID":"1234","productID":"5678","speedMbps":480}]}"#
+        let inventory = try JSONDecoder().decode(DeviceInventory.self, from: Data(raw.utf8))
+        XCTAssertEqual(inventory.devices.first?.stateText, "已识别")
+        XCTAssertNil(inventory.devices.first?.capacityBytes)
+        XCTAssertEqual(inventory.board.cpuCores, 4)
+        let old = #"{"apiVersion":1,"role":"viewer","serviceControl":false,"deviceReboot":false,"rawLogs":false,"dockerControl":false,"ledControl":false,"powerMeasurement":false,"fanRPM":false}"#
+        XCTAssertNil(try JSONDecoder().decode(Capabilities.self, from: Data(old.utf8)).deviceInventory)
     }
 
     func testHTTPSRootOnly() throws {

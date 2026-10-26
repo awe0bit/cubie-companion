@@ -27,13 +27,14 @@ class FileCollector:
     def snapshot(self): return self._read("status")
     def services(self): return self._read("services")
     def network(self): return self._read("network")
+    def devices(self): return self._read("devices")
     def logs(self, ident): raise APIError(503, "host_journal_not_exported")
 
 
 def export_once(collector, folder):
     folder = Path(folder)
     payload = {"status": collector.snapshot(), "services": collector.services(), "network": collector.network(),
-               "exportedAt": time.time()}
+               "devices": collector.devices(), "exportedAt": time.time()}
     temporary = folder / "telemetry.tmp"
     temporary.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False), encoding="utf-8")
     temporary.chmod(0o644)

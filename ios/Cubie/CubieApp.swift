@@ -27,8 +27,8 @@ struct RootView: View {
                     Tab("服务", systemImage: "square.stack.3d.up", value: AppTab.services) {
                         NavigationStack { ServicesView() }
                     }
-                    Tab("绑定", systemImage: "qrcode.viewfinder", value: AppTab.settings) {
-                        NavigationStack { SettingsView() }
+                    Tab("设备", systemImage: "cpu", value: AppTab.devices) {
+                        DeviceNavigationView()
                     }
                 }.tabBarMinimizeBehavior(.never)
             } else {
@@ -37,8 +37,8 @@ struct RootView: View {
                         .tabItem { Label("概览", systemImage: "square.grid.2x2") }.tag(AppTab.overview)
                     NavigationStack { ServicesView() }
                         .tabItem { Label("服务", systemImage: "square.stack.3d.up") }.tag(AppTab.services)
-                    NavigationStack { SettingsView() }
-                        .tabItem { Label("绑定", systemImage: "qrcode.viewfinder") }.tag(AppTab.settings)
+                    DeviceNavigationView()
+                        .tabItem { Label("设备", systemImage: "cpu") }.tag(AppTab.devices)
                 }
             }
         }
@@ -48,7 +48,7 @@ struct RootView: View {
             WelcomeView {
                 hasSeenWelcome = true
                 showWelcome = false
-                navigation.selection = .settings
+                navigation.selection = .devices
             } explore: {
                 hasSeenWelcome = true
                 showWelcome = false

@@ -10,14 +10,14 @@ enum Brand {
     static let name = "CoreNest"
     static let chineseName = "栖核"
     static let tagline = "让设备与服务，各归其位。"
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.4.0"
-    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "5"
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.5.0"
+    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "6"
     static let accent = Color("AccentColor")
     static let onAccent = Color(uiColor: .systemBackground)
 }
 
 enum AppTab: String, CaseIterable {
-    case overview, services, settings
+    case overview, services, devices
 }
 
 enum Layout {

@@ -10,6 +10,9 @@ final class BoardStore: ObservableObject {
     @Published private(set) var servicesSampledAt: String?
     @Published private(set) var network: NetworkStatus?
     @Published private(set) var capabilities: Capabilities?
+    @Published private(set) var inventory: DeviceInventory?
+    @Published private(set) var inventoryError: String?
+    @Published private(set) var inventoryLastContact: Date?
     @Published private(set) var lastContact: Date?
     @Published private(set) var refreshing = false
     @Published private(set) var operating = false
@@ -40,6 +43,7 @@ final class BoardStore: ObservableObject {
     var stale: Bool { !demo && (lastContact.map { Date().timeIntervalSince($0) > 20 } ?? true) }
     var canControl: Bool { !demo && !stale && error == nil && !operating && capabilities?.serviceControl == true }
     var canReboot: Bool { !demo && !stale && error == nil && !operating && capabilities?.deviceReboot == true }
+    var inventoryStale: Bool { !demo && (inventoryLastContact.map { Date().timeIntervalSince($0) > 20 } ?? true) }
 
     func showDemo() {
         generation += 1
@@ -54,6 +58,9 @@ final class BoardStore: ObservableObject {
         services = Demo.services
         servicesSampledAt = Demo.status.sampledAt
         network = Demo.network
+        inventory = Demo.inventory
+        inventoryError = nil
+        inventoryLastContact = nil
     }
 
     func connect(_ credentials: ConnectionCredentials) async throws {
@@ -76,6 +83,9 @@ final class BoardStore: ObservableObject {
         servicesSampledAt = nil
         network = nil
         lastContact = nil
+        inventory = nil
+        inventoryError = nil
+        inventoryLastContact = nil
         error = nil
         notice = nil
         await refresh()
@@ -106,6 +116,22 @@ final class BoardStore: ObservableObject {
             capabilities = newCapabilities
             lastContact = Date()
             error = nil
+            if newCapabilities.deviceInventory == true {
+                do {
+                    let devices: DeviceInventory = try await client.get("devices")
+                    guard revision == generation, !Task.isCancelled else { return }
+                    inventory = devices
+                    inventoryLastContact = Date()
+                    inventoryError = nil
+                } catch {
+                    guard revision == generation, !Task.isCancelled else { return }
+                    inventoryError = "未能更新硬件信息，保留上次识别结果。"
+                }
+            } else {
+                inventory = nil
+                inventoryLastContact = nil
+                inventoryError = "服务端尚不支持硬件识别，请升级 CoreNest Server。"
+            }
         } catch {
             guard revision == generation, !Task.isCancelled else { return }
             self.error = "未能刷新，下面保留上次数据。\(error.localizedDescription)"
@@ -171,4 +197,18 @@ enum Demo {
     static let network = NetworkStatus(sampledAt: "2026-10-25T07:23:10Z", profile: "demo-network",
         interface: "wlan0", campusStatus: "online", campusCheckedAt: "2026-10-25T07:23:10Z",
         requiresAttention: false, attemptsLastHour: 2, tunnelReady: true)
+    static let inventory = DeviceInventory(sampledAt: "2026-01-01T09:41:00Z",
+        board: BoardHardware(model: "Demo board", architecture: "aarch64", kernel: "Linux · 示例",
+                             cpuCores: 4, memoryBytes: 4_294_967_296), devices: [
+            HardwareDevice(id: "storage:demo", category: "storage", name: "SD 卡 · 示例", node: "/dev/mmcblk0",
+                bus: "sd", driver: nil, state: "detected", vendorID: nil, productID: nil,
+                capacityBytes: 32_000_000_000, speedMbps: nil, removable: true),
+            HardwareDevice(id: "usb:demo", category: "usb", name: "USB 摄像头 · 示例", node: "1-2", bus: "usb",
+                driver: "uvcvideo", state: "detected", vendorID: "1234", productID: "5678",
+                capacityBytes: nil, speedMbps: 480, removable: nil),
+            HardwareDevice(id: "network:demo", category: "network", name: "wlan0", node: "wlan0", bus: "wifi",
+                driver: nil, state: "up", vendorID: nil, productID: nil, capacityBytes: nil, speedMbps: nil, removable: nil),
+            HardwareDevice(id: "bluetooth:demo", category: "bluetooth", name: "蓝牙控制器 · 示例", node: "hci0", bus: "bluetooth",
+                driver: nil, state: "detected", vendorID: nil, productID: nil, capacityBytes: nil, speedMbps: nil, removable: nil)
+        ])
 }

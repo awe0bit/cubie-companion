@@ -37,7 +37,7 @@ def main():
             else:
                 raise RuntimeError("production_server_startup_timeout")
             results = {}
-            for path in ["status", "services", "network", "capabilities"]:
+            for path in ["status", "services", "network", "capabilities", "devices"]:
                 request = urllib.request.Request(base + "/v1/" + path,
                                                  headers={"Authorization": "Bearer " + token})
                 with opener.open(request, timeout=12) as response:
@@ -48,7 +48,7 @@ def main():
             assert not results["capabilities"]["deviceReboot"]
             assert results["status"]["powerWatts"] is None
             print(json.dumps({"production_http_smoke": "passed", "anonymous_status": 401,
-                              "authenticated_get_routes": 4, "mutations_executed": 0}))
+                              "authenticated_get_routes": 5, "mutations_executed": 0}))
         finally:
             server.close()
             thread.join(timeout=5)

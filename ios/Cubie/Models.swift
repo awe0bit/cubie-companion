@@ -90,6 +90,70 @@ struct Capabilities: Codable {
     let ledControl: Bool
     let powerMeasurement: Bool
     let fanRPM: Bool
+    let deviceInventory: Bool?
+}
+
+struct DeviceInventory: Codable {
+    let sampledAt: String
+    let board: BoardHardware
+    let devices: [HardwareDevice]
+}
+
+struct BoardHardware: Codable {
+    let model: String?
+    let architecture: String?
+    let kernel: String?
+    let cpuCores: Int?
+    let memoryBytes: Double?
+}
+
+struct HardwareDevice: Codable, Identifiable {
+    let id: String
+    let category: String
+    let name: String
+    let node: String
+    let bus: String
+    let driver: String?
+    let state: String
+    let vendorID: String?
+    let productID: String?
+    let capacityBytes: Double?
+    let speedMbps: Double?
+    let removable: Bool?
+
+    var symbol: String {
+        switch category {
+        case "storage": return "internaldrive"
+        case "network": return bus == "wifi" ? "wifi" : "network"
+        case "bluetooth": return "antenna.radiowaves.left.and.right"
+        default: return "cable.connector"
+        }
+    }
+
+    var stateText: String {
+        switch state {
+        case "detected": return "已识别"
+        case "up": return "链路已连接"
+        case "down", "lowerlayerdown": return "链路未连接"
+        case "blocked": return "未授权"
+        case "dormant": return "等待链路"
+        case "notpresent": return "设备不可用"
+        default: return "状态未知"
+        }
+    }
+
+    var busText: String {
+        switch bus {
+        case "usb": return "USB"
+        case "sd": return "SD"
+        case "mmc": return "MMC"
+        case "nvme": return "NVMe"
+        case "wifi": return "无线网卡"
+        case "ethernet": return "以太网卡"
+        case "bluetooth": return "蓝牙"
+        default: return "系统设备"
+        }
+    }
 }
 
 struct ServiceEvents: Codable {

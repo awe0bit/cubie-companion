@@ -29,6 +29,7 @@ class FakeCollector:
     def snapshot(self): return {"hostname": "fixture", "cpuPercent": None, "powerWatts": None}
     def services(self): return {"services": []}
     def network(self): return {"campusStatus": "unknown"}
+    def devices(self): return {"sampledAt": "2026-01-01T00:00:00Z", "board": {"model": "Demo board"}, "devices": []}
     def logs(self, ident):
         if ident not in SERVICES: raise APIError(404, "unknown_service")
         return {"events": []}
@@ -51,7 +52,7 @@ class AuthTests(unittest.TestCase):
     def setUp(self): self.app = App(config(), FakeCollector())
 
     def test_all_get_routes_require_auth(self):
-        for path in ["/v1/status", "/v1/services", "/v1/network", "/v1/capabilities", "/v1/services/panel/logs"]:
+        for path in ["/v1/status", "/v1/services", "/v1/network", "/v1/devices", "/v1/capabilities", "/v1/services/panel/logs"]:
             self.assertEqual(call(self.app, path, token=None)["code"], 401)
 
     def test_bad_and_oversized_tokens(self):

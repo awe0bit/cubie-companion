@@ -190,6 +190,10 @@ class Collector:
                            "controllable": controllable})
         return {"sampledAt": utc(), "services": result}
 
+    def devices(self):
+        from hardware import HardwareInventory
+        return HardwareInventory(self.sys, self.proc).collect()
+
     def network(self):
         r = {"sampledAt": utc(), "profile": None, "interface": "wlan0",
              "campusStatus": "unknown", "campusCheckedAt": None,
@@ -307,12 +311,14 @@ class App:
                 return self.collector.services()
             if path == "/v1/network":
                 return self.collector.network()
+            if path == "/v1/devices":
+                return self.collector.devices()
             if path == "/v1/capabilities":
                 return {"apiVersion": 1, "role": role,
                         "serviceControl": self.config.get("serviceControl", False) is True and role == "admin",
                         "deviceReboot": self.config.get("deviceReboot", False) is True and role == "admin",
                         "rawLogs": False, "dockerControl": False, "ledControl": False,
-                        "powerMeasurement": False, "fanRPM": False}
+                        "powerMeasurement": False, "fanRPM": False, "deviceInventory": True}
             match = re.fullmatch(r"/v1/services/([a-z-]+)/logs", path)
             if match:
                 return self.collector.logs(match[1])

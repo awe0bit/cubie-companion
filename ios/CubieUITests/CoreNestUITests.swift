@@ -42,7 +42,7 @@ final class CoreNestUITests: XCTestCase {
         explore(app)
         XCTAssertTrue(app.buttons["overview-connect"].exists)
         snapshot("overview-light")
-        for title in ["服务", "绑定"] {
+        for title in ["服务", "设备"] {
             app.tabBars.buttons[title].tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
             snapshot(title+"-light")
@@ -55,6 +55,8 @@ final class CoreNestUITests: XCTestCase {
         let app = launch()
         XCTAssertTrue(app.buttons["welcome-connect"].waitForExistence(timeout: 10))
         app.buttons["welcome-connect"].tap()
+        XCTAssertTrue(app.buttons["device-binding"].waitForExistence(timeout: 5))
+        app.buttons["device-binding"].tap()
         XCTAssertTrue(app.navigationBars["绑定"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["scan-pair"].isHittable)
         XCTAssertEqual(app.textFields.count, 0)
@@ -67,6 +69,8 @@ final class CoreNestUITests: XCTestCase {
         let app = launch()
         XCTAssertTrue(app.buttons["welcome-connect"].waitForExistence(timeout: 10))
         app.buttons["welcome-connect"].tap()
+        XCTAssertTrue(app.buttons["device-binding"].waitForExistence(timeout: 5))
+        app.buttons["device-binding"].tap()
         app.buttons["scan-pair"].tap()
         XCTAssertTrue(app.staticTexts["扫码暂不可用"].waitForExistence(timeout: 5))
         app.buttons["关闭"].tap()
@@ -98,13 +102,29 @@ final class CoreNestUITests: XCTestCase {
         app.scrollViews.firstMatch.swipeUp()
         XCTAssertTrue(bar.buttons["概览"].isHittable)
         XCTAssertTrue(bar.buttons["服务"].isHittable)
-        XCTAssertTrue(bar.buttons["绑定"].isHittable)
+        XCTAssertTrue(bar.buttons["设备"].isHittable)
         XCTAssertEqual(bar.frame.height, original.height, accuracy: 1)
         XCTAssertEqual(bar.frame.width, original.width, accuracy: 1)
         XCTAssertEqual(bar.frame.minY, original.minY, accuracy: 1)
         XCTAssertFalse(app.staticTexts["不支持转速反馈"].exists)
         XCTAssertFalse(app.staticTexts["未提供实测数据"].exists)
         snapshot("overview-scrolled-light")
+    }
+
+    func testHardwareInventoryAndRealDetailNavigation() {
+        let app = launch()
+        explore(app)
+        app.tabBars.buttons["设备"].tap()
+        XCTAssertTrue(app.navigationBars["设备"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["device-binding"].isHittable)
+        let storage = app.buttons["hardware-storage:demo"]
+        reveal(storage, app: app)
+        snapshot("devices-light")
+        storage.tap()
+        XCTAssertTrue(app.staticTexts["/dev/mmcblk0"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["设备容量"].exists)
+        XCTAssertFalse(app.buttons["格式化"].exists)
+        snapshot("hardware-detail-light")
     }
 
     func testDarkNetworkDetailsAndNavigationState() {
@@ -125,7 +145,8 @@ final class CoreNestUITests: XCTestCase {
     func testLargeTextPairingAndServiceDetailsRemainReachable() {
         let app = launch(largeText: true)
         explore(app)
-        app.tabBars.buttons["绑定"].tap()
+        app.tabBars.buttons["设备"].tap()
+        app.buttons["device-binding"].tap()
         let scan = app.buttons["scan-pair"]
         reveal(scan, app: app)
         XCTAssertTrue(scan.isHittable)

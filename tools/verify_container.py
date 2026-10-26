@@ -19,14 +19,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform", default="amd64")
     args = parser.parse_args()
-    image, name = "corenest-server:0.3.1", "corenest-ci-" + secrets.token_hex(6)
+    image, name = "corenest-server:0.5.0", "corenest-ci-" + secrets.token_hex(6)
     with tempfile.TemporaryDirectory() as folder:
         telemetry = Path(folder)
         telemetry.chmod(0o755)
         def update_fixture():
             (telemetry / "telemetry.json").write_text(json.dumps({"exportedAt": time.time(),
                 "status": {"hostname": "ci-host-fixture-not-measurement", "powerWatts": None},
-                "services": {"services": []}, "network": {"campusStatus": "unknown"}}))
+                "services": {"services": []}, "network": {"campusStatus": "unknown"},
+                "devices": {"sampledAt": "2026-01-01T00:00:00Z", "board": {"model": "CI fixture"}, "devices": []}}))
             (telemetry / "telemetry.json").chmod(0o644)
         update_fixture()
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -55,6 +56,7 @@ def main():
                 except OSError: time.sleep(0.5)
             else: raise AssertionError("container_not_ready")
             request("/v1/status", status=401)
+            request("/v1/devices", status=401)
             grant_data = json.loads(docker("exec", name, "python", "/app/pairing.py", "create", "--endpoint", "https://ci.example.com"))
             from urllib.parse import parse_qs
             values = parse_qs(grant_data["fragment"])
@@ -69,6 +71,8 @@ def main():
             assert request("/v1/status", auth="Bearer " + token)["hostname"] == "ci-host-fixture-not-measurement"
             caps = request("/v1/capabilities", auth="Bearer " + token)
             assert caps["role"] == "viewer" and not caps["serviceControl"]
+            assert caps["deviceInventory"]
+            assert request("/v1/devices", auth="Bearer " + token)["board"]["model"] == "CI fixture"
             docker("restart", name)
             # Docker can allocate a new ephemeral host port on restart; credentials stay in the volume.
             base = "http://" + docker("port", name, "18766/tcp")
