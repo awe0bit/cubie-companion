@@ -1,0 +1,60 @@
+name: CoreNest iOS OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: OTA channel (must match the installed IPA)
+        type: choice
+        options: [preview, production]
+        default: preview
+      source_ref:
+        description: Verified source commit or tag (known-good ref for rollback)
+        type: string
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corenest-ota-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ota-${{ inputs.channel }}
+    env:
+      CORENEST_EXPO_PROJECT_ID: ${{ vars.CORENEST_EXPO_PROJECT_ID }}
+      CORENEST_OTA_CHANNEL: ${{ inputs.channel }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      CI: '1'
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
+      - name: Require separate CoreNest project authorization
+        run: |
+          test -n "$EXPO_TOKEN" || { echo 'EXPO_TOKEN is not configured. Nothing was published.'; exit 1; }
+          test -n "$CORENEST_EXPO_PROJECT_ID" || { echo 'Independent CoreNest project is not configured.'; exit 1; }
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - name: Privacy check before publishing
+        working-directory: .
+        run: python3 tools/privacy_check.py
+      - run: npm run export:ios
+      - name: Publish compatible content (no Apple/board credentials)
+        run: npx --yes eas-cli@25.3.0 update --channel "$CORENEST_OTA_CHANNEL" --platform ios --message "CoreNest $(git rev-parse --short HEAD)" --non-interactive

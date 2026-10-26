@@ -49,6 +49,41 @@ final class CubieTests: XCTestCase {
         XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "devices"])
     }
 
+    func testReleaseVersionComparisonIsNumericAndStrict() {
+        XCTAssertTrue(AppRelease.newer("0.10.0", than: "0.9.9"))
+        XCTAssertFalse(AppRelease.newer("0.6.0", than: "0.6.0"))
+        for invalid in ["1.2", "-1.2.3", "1.2.3-beta", "1..3", "999999999999.0.0", "１.２.３"] {
+            XCTAssertNil(AppRelease.parts(invalid), invalid)
+        }
+    }
+
+    func testReleaseRequiresCorrectPlatformRepositoryAndChecksums() throws {
+        let raw = #"{"tag_name":"v0.7.0","body":"Notes","draft":false,"prerelease":false,"html_url":"https://github.com/awe0bit/cubie-companion/releases/tag/v0.7.0","assets":[{"name":"CoreNest-0.7.0-iOS-unsigned.ipa","browser_download_url":"https://github.com/awe0bit/cubie-companion/releases/download/v0.7.0/CoreNest-0.7.0-iOS-unsigned.ipa"},{"name":"SHA256SUMS.txt","browser_download_url":"https://github.com/awe0bit/cubie-companion/releases/download/v0.7.0/SHA256SUMS.txt"}]}"#
+        func release(_ value: String) throws -> AppRelease { try JSONDecoder().decode(AppRelease.self, from: Data(value.utf8)) }
+        XCTAssertTrue(try release(raw).eligible)
+        XCTAssertFalse(try release(raw.replacingOccurrences(of: "\"prerelease\":false", with: "\"prerelease\":true")).eligible)
+        XCTAssertFalse(try release(raw.replacingOccurrences(of: "iOS-unsigned.ipa", with: "Android.apk")).eligible)
+        XCTAssertFalse(try release(raw.replacingOccurrences(of: "SHA256SUMS.txt", with: "missing.txt")).eligible)
+        XCTAssertFalse(try release(raw.replacingOccurrences(of: "github.com", with: "other.example.com")).eligible)
+        XCTAssertFalse(AppRelease.trusted(URL(string: "https://github.com/awe0bit/other/releases/tag/v1.0.0")!))
+        XCTAssertFalse(AppRelease.trusted(URL(string: "http://github.com/awe0bit/cubie-companion/releases/tag/v1.0.0")!))
+    }
+
+    @MainActor func testRuntimeSnapshotExcludesCredentialsAndAddresses() throws {
+        let store = BoardStore()
+        store.showDemo()
+        let snapshot = RuntimeBridge.snapshot(store)
+        XCTAssertEqual(snapshot["demo"] as? Bool, true)
+        let json = RuntimeBridge.json(store)
+        XCTAssertNotNil(json.data(using: .utf8))
+        for key in ["endpoint", "apiToken", "accessClientID", "accessClientSecret", "baseURL", "credentials"] {
+            XCTAssertNil(snapshot[key])
+            XCTAssertFalse(json.contains("\"\(key)\""))
+        }
+        XCTAssertTrue(json.contains("stateText"))
+        XCTAssertTrue(json.contains("inventory"))
+    }
+
     func testHardwareWireFormatAndOldCapabilityCompatibility() throws {
         let raw = #"{"sampledAt":"2026-01-01T09:41:00Z","board":{"model":"Fixture board","architecture":"aarch64","kernel":"Linux","cpuCores":4,"memoryBytes":4294967296},"devices":[{"id":"usb:fixture","category":"usb","name":"Fixture camera","node":"1-2","bus":"usb","driver":"uvcvideo","state":"detected","vendorID":"1234","productID":"5678","speedMbps":480}]}"#
         let inventory = try JSONDecoder().decode(DeviceInventory.self, from: Data(raw.utf8))

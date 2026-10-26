@@ -63,17 +63,18 @@ class BrandTests(unittest.TestCase):
             return sum(linear(float(components[key]))*weight for key,weight in
                        [('red',0.2126),('green',0.7152),('blue',0.0722)])
         light,dark=[luminance(item['color']['components']) for item in colors]
-        self.assertGreaterEqual(1.05/(light+0.05),4.5)
-        self.assertGreaterEqual((dark+0.05)/0.05,4.5)
+        ink=luminance({'red':'0.07','green':'0.09','blue':'0.12'})
+        self.assertGreaterEqual((light+0.05)/(ink+0.05),4.5)
+        self.assertGreaterEqual((dark+0.05)/(ink+0.05),4.5)
         brand=(ROOT/'ios/Cubie/Brand.swift').read_text(encoding='utf-8')
-        self.assertIn('onAccent = Color(uiColor: .systemBackground)',brand)
+        self.assertIn('onAccent = Color(red: 0.07, green: 0.09, blue: 0.12)',brand)
         for name in ['WelcomeView','SettingsView','PairingView']:
             source=(ROOT/f'ios/Cubie/{name}.swift').read_text(encoding='utf-8')
             self.assertIn('.foregroundStyle(Brand.onAccent)',source)
 
     def test_workflow_requires_modern_sdk(self):
         workflow=(ROOT/'.github/workflows/build-ios.yml').read_text()
-        self.assertEqual(workflow.count('DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer'),2)
+        self.assertEqual(workflow.count('DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer'),3)
         self.assertIn('tools/select_simulator.py --legacy',workflow)
         self.assertIn('runtime: [modern, legacy]',workflow)
         self.assertIn('tools/select_simulator.py --prepare',workflow)

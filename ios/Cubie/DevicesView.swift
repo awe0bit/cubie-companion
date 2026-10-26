@@ -6,7 +6,7 @@ struct DeviceNavigationView: View {
             if LaunchMode.argument(after: "--preview-detail") == "binding" {
                 SettingsView()
             } else {
-                DevicesView()
+                RuntimeScreen(route: .devices)
             }
         }
     }

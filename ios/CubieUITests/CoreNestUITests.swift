@@ -18,6 +18,7 @@ final class CoreNestUITests: XCTestCase {
         if !button.isHittable { app.scrollViews.firstMatch.swipeUp() }
         button.tap()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.scrollViews["runtime-overview"].waitForExistence(timeout: 15), "Must exercise embedded runtime, not silently pass with native fallback")
     }
 
     private func snapshot(_ name: String) {
@@ -63,6 +64,20 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertEqual(app.secureTextFields.count, 0)
         XCTAssertFalse(app.buttons["验证并连接"].exists)
         XCTAssertFalse(app.buttons["device-reboot"].exists)
+    }
+
+    func testNativeAboutShowsHonestOTAStateAndPackageUpdateEntry() {
+        let app = launch()
+        explore(app)
+        app.buttons["app-about"].tap()
+        XCTAssertTrue(app.navigationBars["关于栖核"].waitForExistence(timeout: 5))
+        let status = app.staticTexts["ota-status"]
+        reveal(status, app: app)
+        XCTAssertFalse(status.label.isEmpty)
+        let check = app.buttons["release-check"]
+        reveal(check, app: app)
+        XCTAssertTrue(check.isHittable)
+        snapshot("updates-light")
     }
 
     func testScanPairingSimulatorExplainsCameraLimitation() {

@@ -4,12 +4,24 @@
 
 让设备与服务，各归其位。
 
-面向自托管开发板的原生控制台，**iOS / Server 0.5.0 开发预览**。本仓库维护两个组件：
+面向自托管开发板的原生控制台，**iOS 0.6.0 / Server 0.5.0 开发预览**。本仓库维护两个组件：
 
 - **CoreNest Server**：Docker API、限时配对网页和低权限主板指标桥。
-- **CoreNest iOS**：SwiftUI 原生应用，iOS 26 使用系统 Liquid Glass 标签栏，旧系统保留原生标签栏。
+- **CoreNest iOS**：SwiftUI 原生壳与 Expo/React Native 页面运行时，iOS 26 使用系统 Liquid Glass 标签栏，旧系统保留原生标签栏。
 
 [部署与扫码](docs/DOCKER_PAIRING.md) · [品牌设计](docs/BRAND.md) · [安全](SECURITY.md) · [维护](CONTRIBUTING.md) · [验收边界](VERIFICATION.md)
+
+## iOS 风格与 OTA
+
+0.6.0 参照 [Tempo](https://github.com/awe0bit/Tempo) 的灰白／深黑表面、蓝色强调、18pt 卡片圆角与系统字体层级，独立实现栖核界面。保留三个系统标签，不仿制液态玻璃导航。
+
+概览、服务、设备的一级内容已迁入 TypeScript；导航、扫码、Keychain、网络请求、真实状态与操作确认仍由 Swift 掌管。JS 只接收状态快照与有限的导航／刷新动作，不获得长期凭据，不直接请求主板，不运行远程 shell。运行时启动失败会退回随包保留的原生页面。
+
+`expo-updates` 支持兼容 runtime 的页面、样式与资源更新；前台检查（自动检查至少间隔一小时），下载后下次冷启动应用，不强制重载页面。原生依赖、权限、桥接或 Bundle ID 变化仍需新 IPA，未签 IPA 不能免签安装或续签。
+
+**远程 OTA 默认未启用**：必须先为栖核授权一个独立 Expo 项目，不得复用 Tempo 的项目 ID、所有者或 Token。没有项目 ID 的构建依然打包完整内置界面，应用明确显示未配置；授权之后需要重新构建一次 IPA 才能嵌入更新地址。详见 [OTA 发布与恢复](docs/IOS_OTA.md)。
+
+“关于与更新”位于概览右上角，分别显示页面更新和 GitHub 安装包更新；不把 Actions 临时产物冒充正式发布。安装包更新仅识别同仓库、正确 iOS 文件名且附校验和的数值版本发布。
 
 ## 部署与扫码
 
@@ -52,6 +64,7 @@ iPhone「设备 → 右上角扫码 → 扫码绑定」→ 确认域名 → 核�
 
 - `CoreNest-unsigned-ipa`：ARM64 iPhoneOS 未签 IPA、SHA256 与清单，需自行有效签名后才能安装。
 - `CoreNest-Docker-arm64` / `CoreNest-Docker-amd64`：可导入镜像及 SHA256。
+- `CoreNest-runtime-package`：包含内置页面和设备／模拟器 XCFramework 的独立 Swift Package。
 - 模拟器截图与测试记录：仅使用通用演示数据，不读取真实设备凭据。
 
 云端不得携带真实设备地址、个人账号、私人网络配置、本机路径或私有部署报告。构建通过不等于真实环境联网、散热、长期开机和安全审计通过。
@@ -63,6 +76,7 @@ ios/                      SwiftUI、Keychain、原生扫码、XCTest
 backend/                  API、配对、只读采集桥、安全回归测试
 deploy/                   通用安装文件
 tools/                    构建、测试、打包、桌面部署、隐私检查
+runtime/                  TypeScript 页面、受限原生桥、Expo OTA 运行时
 Dockerfile / compose.yaml
 ```
 
@@ -75,7 +89,7 @@ python tools/verify_sources.py
 python tools/privacy_check.py
 ```
 
-Mac 使用 Xcode 26.3 打开 `ios/Cubie.xcodeproj`，选择 `Cubie` scheme。通用示例 Bundle ID 为 `org.corenest.app`，签名时使用自己的标识。项目不内置 Apple 证书、描述文件或私有服务凭据。
+Mac 先在 `runtime/` 运行 `npm ci`、`npm run prebuild:ios`、`npm run build:ios` 生成本地 Swift Package，再使用 Xcode 26.3 打开 `ios/Cubie.xcodeproj`，选择 `Cubie` scheme。通用示例 Bundle ID 为 `org.corenest.app`，签名时使用自己的标识。项目不内置 Apple 证书、描述文件或私有服务凭据。
 
 ## 隐私约定
 

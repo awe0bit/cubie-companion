@@ -10,10 +10,11 @@ enum Brand {
     static let name = "CoreNest"
     static let chineseName = "栖核"
     static let tagline = "让设备与服务，各归其位。"
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.5.0"
-    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "6"
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.6.0"
+    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "7"
     static let accent = Color("AccentColor")
-    static let onAccent = Color(uiColor: .systemBackground)
+    // Blue filled controls use dark text in BOTH appearances for readable contrast.
+    static let onAccent = Color(red: 0.07, green: 0.09, blue: 0.12)
 }
 
 enum AppTab: String, CaseIterable {
@@ -21,10 +22,24 @@ enum AppTab: String, CaseIterable {
 }
 
 enum Layout {
-    static let pageInset: CGFloat = 16
-    static let cardInset: CGFloat = 18
-    static let cardRadius: CGFloat = 20
+    static let pageInset: CGFloat = 20
+    static let cardInset: CGFloat = 20
+    static let cardRadius: CGFloat = 18
     static let spacing: CGFloat = 16
+}
+
+enum Surface {
+    static let canvas = adaptive(0xF3F4F5, 0x0B0B0B)
+    static let card = adaptive(0xFFFFFF, 0x171717)
+    static let ink = adaptive(0x1A1C1F, 0xF5F5F5)
+    static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            let hex = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat((hex >> 16) & 255) / 255,
+                           green: CGFloat((hex >> 8) & 255) / 255,
+                           blue: CGFloat(hex & 255) / 255, alpha: 1)
+        })
+    }
 }
 
 @MainActor

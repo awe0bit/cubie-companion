@@ -35,7 +35,7 @@ struct WelcomeView: View {
             .padding(.bottom, 28)
             .frame(maxWidth: 560, alignment: .leading).frame(maxWidth: .infinity)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Surface.canvas)
     }
 
     private func feature(_ title: String, detail: String, symbol: String) -> some View {

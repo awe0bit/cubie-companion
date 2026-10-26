@@ -28,3 +28,9 @@ deploy/install_readonly.py
 deploy/install_status_export.py
 deploy/verify_live.py
 docs/screenshots/
+node_modules/
+runtime/.expo/
+runtime/ios/
+runtime/android/
+runtime/artifacts/
+runtime/dist/

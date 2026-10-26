@@ -23,7 +23,8 @@ EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 IP = re.compile(r"(?<![A-Za-z0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![A-Za-z0-9])")
 URL = re.compile(r"https?://[^\s\"'<>`]+")
 PUBLIC_DOC_HOSTS = {"github.com", "developer.apple.com", "developers.cloudflare.com", "docs.docker.com",
-                    "docs.radxa.com", "www.w3.org", "www.apple.com"}
+                    "docs.radxa.com", "www.w3.org", "www.apple.com", "api.github.com",
+                    "registry.npmjs.org", "docs.expo.dev"}
 EXAMPLE_NETWORKS = [ipaddress.ip_network(value) for value in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")]
 
 

@@ -1,0 +1,7 @@
+{
+  "cli": { "version": ">= 18.0.0" },
+  "build": {
+    "preview": { "channel": "preview" },
+    "production": { "channel": "production" }
+  }
+}

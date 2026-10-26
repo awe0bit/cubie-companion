@@ -1,0 +1,26 @@
+{
+  "name": "@corenest/ios-runtime",
+  "version": "0.6.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs",
+    "export:ios": "expo export --platform ios --output-dir dist",
+    "prebuild:ios": "expo prebuild --platform ios --clean",
+    "build:ios": "expo-brownfield build:ios --release --package CoreNestRuntimePackage --verbose"
+  },
+  "dependencies": {
+    "expo": "~57.0.27",
+    "expo-brownfield": "~57.0.24",
+    "expo-build-properties": "~57.0.22",
+    "expo-updates": "~57.0.25",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "babel-preset-expo": "~57.0.14",
+    "typescript": "~6.0.3"
+  }
+}

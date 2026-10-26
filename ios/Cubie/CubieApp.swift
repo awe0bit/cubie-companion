@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct CoreNestApp: App {
+    @UIApplicationDelegateAdaptor(RuntimeAppDelegate.self) private var runtimeDelegate
     @StateObject private var store = BoardStore()
     var body: some Scene {
         WindowGroup { RootView().environmentObject(store).tint(Brand.accent) }
@@ -22,10 +23,10 @@ struct RootView: View {
                 // System-owned Liquid Glass. No material overlay or UIKit bar override.
                 TabView(selection: $navigation.selection) {
                     Tab("概览", systemImage: "square.grid.2x2", value: AppTab.overview) {
-                        NavigationStack { OverviewView() }
+                        NavigationStack { RuntimeScreen(route: .overview) }
                     }
                     Tab("服务", systemImage: "square.stack.3d.up", value: AppTab.services) {
-                        NavigationStack { ServicesView() }
+                        NavigationStack { RuntimeScreen(route: .services) }
                     }
                     Tab("设备", systemImage: "cpu", value: AppTab.devices) {
                         DeviceNavigationView()
@@ -33,9 +34,9 @@ struct RootView: View {
                 }.tabBarMinimizeBehavior(.never)
             } else {
                 TabView(selection: $navigation.selection) {
-                    NavigationStack { OverviewView() }
+                    NavigationStack { RuntimeScreen(route: .overview) }
                         .tabItem { Label("概览", systemImage: "square.grid.2x2") }.tag(AppTab.overview)
-                    NavigationStack { ServicesView() }
+                    NavigationStack { RuntimeScreen(route: .services) }
                         .tabItem { Label("服务", systemImage: "square.stack.3d.up") }.tag(AppTab.services)
                     DeviceNavigationView()
                         .tabItem { Label("设备", systemImage: "cpu") }.tag(AppTab.devices)

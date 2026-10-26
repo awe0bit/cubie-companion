@@ -2,6 +2,11 @@ name: Build CoreNest unsigned IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a verified unsigned iOS package to GitHub Releases
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -43,7 +48,7 @@ jobs:
 
   ios-tests:
     name: iOS simulator tests (${{ matrix.runtime }})
-    needs: privacy
+    needs: [privacy, native-runtime]
     runs-on: macos-15
     timeout-minutes: 25
     strategy:
@@ -54,6 +59,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: CoreNest-runtime-package
+          path: runtime/artifacts/CoreNestRuntimePackage-release
       - name: Inspect Xcode
         run: |
           xcodebuild -version
@@ -149,6 +158,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: CoreNest-runtime-package
+          path: runtime/artifacts/CoreNestRuntimePackage-release
       - name: Build arm64 iPhoneOS app without signing
         run: |
           set -o pipefail
@@ -190,3 +203,86 @@ jobs:
             echo '**Unsigned:** re-sign with your own valid identity/provisioning before installing on iPhone.'
             echo 'No Apple certificate, provisioning profile, device credential, or Cloudflare token was used.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  runtime-checks:
+    name: OTA TypeScript and lifecycle checks
+    needs: privacy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run export:ios
+
+  native-runtime:
+    name: Build embedded OTA runtime
+    needs: [privacy, runtime-checks]
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: runtime
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      CORENEST_EXPO_PROJECT_ID: ${{ vars.CORENEST_EXPO_PROJECT_ID }}
+      CORENEST_OTA_CHANNEL: production
+      CI: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Generate isolated runtime (no Apple identity)
+        run: npm run prebuild:ios
+      - name: Build device and simulator XCFrameworks
+        run: |
+          set -o pipefail
+          npm run build:ios 2>&1 | tee runtime-build.log
+      - name: Verify runtime package and native compatibility version
+        run: |
+          test -f artifacts/CoreNestRuntimePackage-release/Package.swift
+          grep -q 'CoreNestRuntime' artifacts/CoreNestRuntimePackage-release/Package.swift
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: CoreNest-runtime-package
+          path: runtime/artifacts/CoreNestRuntimePackage-release
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: CoreNest-runtime-build-log
+          path: runtime/runtime-build.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  release:
+    name: Publish verified iOS release
+    needs: unsigned-ipa
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: CoreNest-unsigned-ipa
+          path: build/release
+      - name: Verify and publish immutable version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/publish_release.py --artifact build/release

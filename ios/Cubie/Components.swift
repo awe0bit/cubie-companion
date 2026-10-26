@@ -6,7 +6,7 @@ struct Card<Content: View>: View {
         VStack(alignment: .leading, spacing: Layout.spacing) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Layout.cardInset)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous))
+            .background(Surface.card, in: RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous))
     }
 }
 
@@ -20,7 +20,7 @@ struct Page<Content: View>: View {
                 content
             }.frame(maxWidth: 640).frame(maxWidth: .infinity).padding(Layout.pageInset)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Surface.canvas)
         .refreshable { await store.refresh() }
         .navigationBarTitleDisplayMode(.inline)
     }
