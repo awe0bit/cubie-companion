@@ -12,6 +12,23 @@ struct ServicesView: View {
 
     var body: some View {
         Page {
+            if let management = store.management, !management.containers.isEmpty {
+                Text("Docker 应用").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Card {
+                    ForEach(management.containers) { container in
+                        NavigationLink { ContainerDetailView(containerID: container.id) } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(container.name).font(.subheadline.weight(.semibold))
+                                    Text(container.image).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                Text(container.stateText).font(.caption).foregroundStyle(.secondary)
+                            }.padding(.vertical, 6)
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
             if store.services.isEmpty {
                 ContentUnavailableView("暂无服务数据", systemImage: "square.stack.3d.up", description: Text("连接设备后下拉刷新。"))
             } else {
@@ -36,7 +53,7 @@ struct ServicesView: View {
                                     }
                                     Spacer(minLength: 4)
                                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                                }.padding(.vertical, 14).contentShape(Rectangle())
+                                }.padding(.vertical, 8).contentShape(Rectangle())
                             }.buttonStyle(.plain).accessibilityIdentifier("service-\(service.id)")
                         }
                     }

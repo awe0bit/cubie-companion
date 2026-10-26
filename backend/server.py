@@ -26,7 +26,7 @@ SERVICES = {
     "tunnel": ("a7s-cloudflared.service", "Cloudflare Tunnel", False),
 }
 ACTIONS = {"start", "stop", "restart"}
-CONTROL_SOCKET = "/run/a7s-companion-control.sock"
+CONTROL_SOCKET = os.environ.get('CORENEST_CONTROL_SOCKET', "/run/a7s-companion-control.sock")
 
 
 class APIError(Exception):
@@ -194,6 +194,11 @@ class Collector:
         from hardware import HardwareInventory
         return HardwareInventory(self.sys, self.proc).collect()
 
+    def management(self):
+        from management import broker_request
+        try: return broker_request({'action': 'snapshot'})
+        except (OSError, ValueError): raise APIError(503, 'control_unavailable')
+
     def network(self):
         r = {"sampledAt": utc(), "profile": None, "interface": "wlan0",
              "campusStatus": "unknown", "campusCheckedAt": None,
@@ -254,7 +259,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def control(payload):
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
-            channel.settimeout(8)
+            channel.settimeout(18)
             channel.connect(CONTROL_SOCKET)
             channel.sendall(json.dumps(payload).encode() + b"\n")
             data = b""
@@ -313,11 +318,22 @@ class App:
                 return self.collector.network()
             if path == "/v1/devices":
                 return self.collector.devices()
+            if path == '/v1/management':
+                result = self.collector.management()
+                if role != 'admin':
+                    result = dict(result, leds=[dict(x, controllable=False) for x in result['leds']],
+                                  containers=[dict(x, controllable=False) for x in result['containers']])
+                return result
             if path == "/v1/capabilities":
+                try: managed = self.collector.management()
+                except (APIError, AttributeError): managed = {}
                 return {"apiVersion": 1, "role": role,
-                        "serviceControl": self.config.get("serviceControl", False) is True and role == "admin",
+                        "serviceControl": self.config.get("serviceControl", False) is True and role == "admin" and managed.get('serviceControl', True),
                         "deviceReboot": self.config.get("deviceReboot", False) is True and role == "admin",
-                        "rawLogs": False, "dockerControl": False, "ledControl": False,
+                        "rawLogs": False,
+                        "dockerControl": self.config.get('dockerControl') is True and role == 'admin' and managed.get('dockerControl') is True,
+                        "ledControl": self.config.get('ledControl') is True and role == 'admin' and managed.get('ledControl') is True,
+                        "managementInventory": True,
                         "powerMeasurement": False, "fanRPM": False, "deviceInventory": True}
             match = re.fullmatch(r"/v1/services/([a-z-]+)/logs", path)
             if match:
@@ -350,6 +366,16 @@ class App:
                         or body["action"] not in ACTIONS):
                     raise APIError(400, "invalid_action")
                 payload = {"service": ident, "action": body["action"]}
+            elif re.fullmatch(r'/v1/leds/[A-Za-z0-9:_-]{1,80}/actions', path):
+                if self.config.get('ledControl') is not True: raise APIError(403, 'control_not_enabled')
+                if set(body) != {'mode'} or not isinstance(body['mode'], str) or body['mode'] not in {'on', 'off', 'system'}:
+                    raise APIError(400, 'invalid_mode')
+                payload = {'led': path.split('/')[3], 'mode': body['mode']}
+            elif re.fullmatch(r'/v1/containers/[a-f0-9]{64}/actions', path):
+                if self.config.get('dockerControl') is not True: raise APIError(403, 'control_not_enabled')
+                if set(body) != {'action'} or not isinstance(body['action'], str) or body['action'] not in ACTIONS:
+                    raise APIError(400, 'invalid_action')
+                payload = {'container': path.split('/')[3], 'action': body['action']}
             elif path == "/v1/device/reboot":
                 if self.config.get("deviceReboot") is not True:
                     raise APIError(403, "control_not_enabled")

@@ -10,6 +10,9 @@ final class BoardStore: ObservableObject {
     @Published private(set) var servicesSampledAt: String?
     @Published private(set) var network: NetworkStatus?
     @Published private(set) var capabilities: Capabilities?
+    @Published private(set) var management: ManagementStatus?
+    @Published private(set) var managementError: String?
+    @Published private(set) var managementLastContact: Date?
     @Published private(set) var inventory: DeviceInventory?
     @Published private(set) var inventoryError: String?
     @Published private(set) var inventoryLastContact: Date?
@@ -43,6 +46,7 @@ final class BoardStore: ObservableObject {
     var stale: Bool { !demo && (lastContact.map { Date().timeIntervalSince($0) > 20 } ?? true) }
     var canControl: Bool { !demo && !stale && error == nil && !operating && capabilities?.serviceControl == true }
     var canReboot: Bool { !demo && !stale && error == nil && !operating && capabilities?.deviceReboot == true }
+    var managementReady: Bool { !demo && !stale && !operating && error == nil && (managementLastContact.map { Date().timeIntervalSince($0) < 20 } ?? false) }
     var inventoryStale: Bool { !demo && (inventoryLastContact.map { Date().timeIntervalSince($0) > 20 } ?? true) }
 
     func showDemo() {
@@ -54,6 +58,9 @@ final class BoardStore: ObservableObject {
         error = nil
         notice = nil
         capabilities = nil
+        management = Demo.management
+        managementLastContact = nil
+        managementError = nil
         status = Demo.status
         services = Demo.services
         servicesSampledAt = Demo.status.sampledAt
@@ -77,6 +84,9 @@ final class BoardStore: ObservableObject {
         client = candidate
         endpoint = bound.baseURL
         capabilities = caps
+        management = nil
+        managementLastContact = nil
+        managementError = nil
         demo = false
         status = nil
         services = []
@@ -116,6 +126,22 @@ final class BoardStore: ObservableObject {
             capabilities = newCapabilities
             lastContact = Date()
             error = nil
+            if newCapabilities.managementInventory == true {
+                do {
+                    let value: ManagementStatus = try await client.get("management")
+                    guard revision == generation, !Task.isCancelled else { return }
+                    management = value
+                    managementLastContact = Date()
+                    managementError = value.dockerAvailable ? nil : "Docker 暂不可用，列表未代表全部服务。"
+                } catch {
+                    guard revision == generation, !Task.isCancelled else { return }
+                    managementError = "控制信息暂不可用，操作已暂停。"
+                }
+            } else {
+                management = nil
+                managementLastContact = nil
+                managementError = "请升级主板服务端以识别 Docker 与指示灯。"
+            }
             if newCapabilities.deviceInventory == true {
                 do {
                     let devices: DeviceInventory = try await client.get("devices")
@@ -169,6 +195,38 @@ final class BoardStore: ObservableObject {
         }
     }
 
+    func setLED(_ led: BoardLED, mode: String) async {
+        guard managementReady, capabilities?.ledControl == true, led.controllable,
+              management?.leds.contains(where: { $0.id == led.id }) == true,
+              led.id.range(of: "^[A-Za-z0-9:_-]{1,80}$", options: .regularExpression) != nil,
+              ["on", "off", "system"].contains(mode) else { return }
+        await manage("leds/\(led.id)/actions", body: ["mode": mode])
+    }
+
+    func act(container: BoardContainer, action: String) async {
+        guard managementReady, capabilities?.dockerControl == true, container.controllable,
+              management?.containers.contains(where: { $0.id == container.id }) == true,
+              container.id.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+              ["start", "stop", "restart"].contains(action) else { return }
+        await manage("containers/\(container.id)/actions", body: ["action": action])
+    }
+
+    private func manage(_ path: String, body: [String: String]) async {
+        guard let client else { return }
+        operating = true
+        let revision = generation
+        defer { operating = false }
+        do {
+            let result: Accepted = try await client.post(path, body: body)
+            guard revision == generation else { return }
+            notice = result.accepted ? "操作已执行，正在刷新实际状态。" : "操作未执行，请检查权限。"
+        } catch {
+            guard revision == generation else { return }
+            self.error = "操作结果未确认，请刷新后检查，不要连续重试。\(error.localizedDescription)"
+        }
+        await refresh()
+    }
+
     func events(for service: BoardService) async throws -> [ServiceEvent] {
         guard !demo, let client else { return [] }
         guard service.id.range(of: "^[a-z-]+$", options: .regularExpression) != nil else {
@@ -180,6 +238,11 @@ final class BoardStore: ObservableObject {
 }
 
 enum Demo {
+    static let management = ManagementStatus(sampledAt: "2026-10-25T07:23:10Z",
+        leds: [BoardLED(id: "demo:blue", name: "蓝色状态灯", mode: "system", controllable: false),
+               BoardLED(id: "demo:green", name: "绿色指示灯", mode: "on", controllable: false)],
+        containers: [BoardContainer(id: String(repeating: "a", count: 64), name: "demo-blog", image: "example/blog:stable", state: "running", controllable: false),
+                     BoardContainer(id: String(repeating: "b", count: 64), name: "demo-tools", image: "example/tools:stable", state: "exited", controllable: false)], dockerAvailable: true)
     // Design fixtures only. Never sent to the board or represented as measured values.
     static let status = BoardStatus(sampledAt: "2026-10-25T07:23:10Z", hostname: "corenest-demo",
         cpuPercent: 12.4, memoryUsedBytes: 612_368_384, memoryTotalBytes: 4_026_531_840,

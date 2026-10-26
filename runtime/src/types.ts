@@ -1,5 +1,6 @@
 export type Route = 'overview' | 'services' | 'devices';
-export type Service = { id: string; name: string; state: string; stateText: string };
+export type Service = { id: string; name: string; unit: string; state: string; stateText: string };
+export type Container = { id: string; name: string; image: string; state: string; controllable: boolean };
 export type Hardware = { id: string; category: string; name: string; stateText: string };
 export type Snapshot = {
   demo: boolean; stale: boolean; refreshing: boolean; error?: string; notice?: string;
@@ -11,6 +12,8 @@ export type Snapshot = {
     temperatures: { name: string; celsius: number }[]; powerWatts?: number; fanRPM?: number;
   };
   services: Service[];
+  managementError?: string;
+  management?: { containers: Container[]; leds: { id: string; name: string; mode: string; controllable: boolean }[]; dockerAvailable: boolean };
   network?: { campusText: string };
   inventory?: {
     board: { model?: string; architecture?: string; kernel?: string; cpuCores?: number; memoryBytes?: number };

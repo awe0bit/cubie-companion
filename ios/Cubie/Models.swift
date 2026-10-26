@@ -91,6 +91,41 @@ struct Capabilities: Codable {
     let powerMeasurement: Bool
     let fanRPM: Bool
     let deviceInventory: Bool?
+    let managementInventory: Bool?
+}
+
+struct ManagementStatus: Codable {
+    let sampledAt: String
+    let leds: [BoardLED]
+    let containers: [BoardContainer]
+    let dockerAvailable: Bool
+}
+
+struct BoardLED: Codable, Identifiable {
+    let id: String
+    let name: String
+    let mode: String
+    let controllable: Bool
+    var modeText: String { mode == "system" ? "跟随系统" : mode == "on" ? "常亮" : "已关闭" }
+}
+
+struct BoardContainer: Codable, Identifiable {
+    let id: String
+    let name: String
+    let image: String
+    let state: String
+    let controllable: Bool
+    var stateText: String {
+        switch state {
+        case "running": return "运行中"
+        case "exited": return "已停止"
+        case "created": return "待启动"
+        case "paused": return "已暂停"
+        case "restarting": return "重启中"
+        case "dead": return "故障"
+        default: return "未知状态"
+        }
+    }
 }
 
 struct DeviceInventory: Codable {

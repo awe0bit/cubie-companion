@@ -18,6 +18,9 @@ struct DevicesView: View {
 
     var body: some View {
         Page {
+            NavigationLink { DeviceControlsView() } label: {
+                Label("灯光与设备控制", systemImage: "switch.2")
+            }.accessibilityIdentifier("device-controls")
             if let inventory = store.inventory {
                 Card {
                     Label(store.status?.hostname ?? "开发板", systemImage: "cpu").font(.headline)
@@ -71,6 +74,123 @@ struct DevicesView: View {
                     .accessibilityIdentifier("device-binding")
             }
         }
+    }
+}
+
+struct DeviceControlsView: View {
+    @EnvironmentObject private var store: BoardStore
+    @State private var selectedLED: BoardLED?
+    @State private var selectedMode: String?
+    private let modes = [("on", "常亮"), ("off", "关闭"), ("system", "跟随系统")]
+
+    var body: some View {
+        Page {
+            if let management = store.management {
+                Text("指示灯").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                if management.leds.isEmpty {
+                    Text("没有可管理的指示灯。电源灯如为硬件直连，无法由软件关闭。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(management.leds) { led in
+                    Card {
+                        HStack {
+                            Label(led.name, systemImage: "lightbulb").font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text(led.modeText).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if !store.demo && store.capabilities?.ledControl == true && led.controllable {
+                            HStack {
+                                ForEach(modes, id: \.0) { mode, title in
+                                    Button(title) { selectedLED = led; selectedMode = mode }
+                                        .buttonStyle(.bordered).disabled(!store.managementReady || led.mode == mode)
+                                }
+                            }
+                        }
+                    }
+                }
+                if store.demo || store.capabilities?.role != "admin" {
+                    Text(store.demo ? "演示数据，不会控制真实设备。" : "当前绑定为只读。控制权限需在主板端授权，App 不会自行提权。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Docker 应用").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                if !management.dockerAvailable {
+                    Text("Docker 暂不可用，请检查主板守护进程。")
+                } else if management.containers.isEmpty {
+                    Text("当前没有容器。")
+                }
+                ForEach(management.containers) { container in
+                    NavigationLink { ContainerDetailView(containerID: container.id) } label: {
+                        Card {
+                            HStack {
+                                Label(container.name, systemImage: "shippingbox").font(.subheadline)
+                                Spacer()
+                                Text(container.stateText).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }.buttonStyle(.plain)
+                }
+            } else {
+                ContentUnavailableView("设备控制尚未就绪", systemImage: "switch.2",
+                    description: Text(store.managementError ?? "请连接开发板并更新服务端。"))
+            }
+            if let error = store.managementError { Text(error).font(.caption).foregroundStyle(.orange) }
+        }
+        .navigationTitle("设备控制")
+        .confirmationDialog("确认修改指示灯？", isPresented: Binding(
+            get: { selectedLED != nil }, set: { if !$0 { selectedLED = nil; selectedMode = nil } }
+        ), titleVisibility: .visible) {
+            if let led = selectedLED, let mode = selectedMode {
+                Button("确认\(modes.first(where: { $0.0 == mode })?.1 ?? mode)") {
+                    Task { await store.setLED(led, mode: mode) }
+                    selectedLED = nil; selectedMode = nil
+                }
+            }
+        } message: { Text("只修改指示灯，不会关闭开发板电源。") }
+    }
+}
+
+struct ContainerDetailView: View {
+    @EnvironmentObject private var store: BoardStore
+    let containerID: String
+    @State private var pending: String?
+    private var container: BoardContainer? { store.management?.containers.first { $0.id == containerID } }
+    private let titles = ["start": "启动", "restart": "重启", "stop": "停止"]
+    var body: some View {
+        Page {
+            if let container {
+                Card {
+                    Label(container.name, systemImage: "shippingbox").font(.headline)
+                    InfoRow(title: "状态", value: container.stateText)
+                    InfoRow(title: "镜像", value: container.image)
+                    InfoRow(title: "容器 ID", value: String(container.id.prefix(12)))
+                }
+                if !store.demo && store.capabilities?.dockerControl == true && container.controllable {
+                    Card {
+                        ForEach(["start", "restart", "stop"], id: \.self) { action in
+                            Button(titles[action] ?? action, role: action == "stop" ? .destructive : nil) { pending = action }
+                                .disabled(!store.managementReady || (action == "start" ? container.state == "running" : container.state != "running"))
+                                .accessibilityIdentifier("container-\(action)")
+                        }
+                    }
+                    Text("停止或重启会中断该应用。操作不会删除容器、镜像或数据卷。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(store.demo ? "示例容器，不会操作真实设备。" : !container.controllable ? "此容器受保护或未加入主板控制白名单。" : "当前绑定只有查看权限。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                ContentUnavailableView("容器已不在列表", systemImage: "shippingbox", description: Text("返回服务页刷新。"))
+            }
+        }.navigationTitle(container?.name ?? "Docker 应用")
+        .confirmationDialog("确认\(titles[pending ?? ""] ?? "操作")容器？", isPresented: Binding(
+            get: { pending != nil }, set: { if !$0 { pending = nil } }
+        ), titleVisibility: .visible) {
+            if let action = pending, let container {
+                Button("确认\(titles[action] ?? action)", role: action == "stop" ? .destructive : nil) {
+                    Task { await store.act(container: container, action: action) }; pending = nil
+                }
+            }
+        } message: { Text("该应用会短暂中断，数据卷会保留。") }
     }
 }
 

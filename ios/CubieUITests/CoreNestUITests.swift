@@ -102,7 +102,7 @@ final class CoreNestUITests: XCTestCase {
         explore(app)
         app.tabBars.buttons["服务"].tap()
         let panel = app.buttons["service-panel"]
-        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        reveal(panel, app: app)
         panel.tap()
         XCTAssertTrue(app.navigationBars["1Panel"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["1panel-core.service"].exists)
@@ -117,6 +117,7 @@ final class CoreNestUITests: XCTestCase {
         let app = launch()
         explore(app)
         let bar = app.tabBars.firstMatch
+        XCTAssertEqual(app.tabBars.count, 1, "Only the system Liquid Glass tab bar may exist")
         let original = bar.frame
         app.scrollViews.firstMatch.swipeUp()
         app.scrollViews.firstMatch.swipeUp()
@@ -129,6 +130,34 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["不支持转速反馈"].exists)
         XCTAssertFalse(app.staticTexts["未提供实测数据"].exists)
         snapshot("overview-scrolled-light")
+    }
+
+    func testServiceSearchFiltersAndDockerDetails() {
+        let app = launch()
+        explore(app)
+        app.tabBars.buttons["服务"].tap()
+        let search = app.textFields["service-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("demo-blog")
+        let container = app.buttons["container-" + String(repeating: "a", count: 64)]
+        XCTAssertTrue(container.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["service-panel"].exists)
+        container.tap()
+        XCTAssertTrue(app.navigationBars["demo-blog"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["example/blog:stable"].exists)
+        XCTAssertFalse(app.buttons["container-stop"].exists, "Demo must not mutate a real container")
+    }
+
+    func testDeviceControlPageShowsLEDsWithoutFakeDemoActions() {
+        let app = launch()
+        explore(app)
+        app.tabBars.buttons["设备"].tap()
+        app.buttons["device-controls"].tap()
+        XCTAssertTrue(app.navigationBars["设备控制"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["蓝色状态灯"].exists)
+        XCTAssertTrue(app.staticTexts["跟随系统"].exists)
+        XCTAssertFalse(app.buttons["常亮"].exists)
     }
 
     func testHardwareInventoryAndRealDetailNavigation() {

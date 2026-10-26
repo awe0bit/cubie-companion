@@ -140,14 +140,14 @@ jobs:
       - name: Validate Compose and build real container
         run: |
           docker compose config --quiet
-          docker buildx build --platform linux/${{ matrix.arch }} --load -t corenest-server:0.5.0 .
+          docker buildx build --platform linux/${{ matrix.arch }} --load -t corenest-server:0.7.0 .
       - name: Verify QR pairing, approval, persistence and revocation
         run: python3 tools/verify_container.py --platform ${{ matrix.arch }}
       - name: Package loadable server image
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p build/docker
-          docker save corenest-server:0.5.0 | gzip > build/docker/CoreNest-server-${{ matrix.arch }}.tar.gz
+          docker save corenest-server:0.7.0 | gzip > build/docker/CoreNest-server-${{ matrix.arch }}.tar.gz
           cd build/docker
           sha256sum CoreNest-server-${{ matrix.arch }}.tar.gz > CoreNest-server-${{ matrix.arch }}.tar.gz.sha256
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

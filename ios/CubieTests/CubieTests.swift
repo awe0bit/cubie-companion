@@ -49,6 +49,17 @@ final class CubieTests: XCTestCase {
         XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "devices"])
     }
 
+    @MainActor func testManagementFixturesAndBridgeDoNotGrantControl() throws {
+        let store = BoardStore()
+        store.showDemo()
+        XCTAssertFalse(store.managementReady)
+        XCTAssertEqual(store.management?.leds.first?.modeText, "跟随系统")
+        XCTAssertTrue(store.management?.containers.allSatisfy { !$0.controllable } == true)
+        let snapshot = RuntimeBridge.snapshot(store)
+        XCTAssertNotNil(snapshot["management"])
+        XCTAssertFalse(RuntimeBridge.json(store).contains("clientSecret"))
+    }
+
     func testReleaseVersionComparisonIsNumericAndStrict() {
         XCTAssertTrue(AppRelease.newer("0.10.0", than: "0.9.9"))
         XCTAssertFalse(AppRelease.newer("0.6.0", than: "0.6.0"))

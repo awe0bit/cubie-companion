@@ -28,12 +28,20 @@ class FileCollector:
     def services(self): return self._read("services")
     def network(self): return self._read("network")
     def devices(self): return self._read("devices")
+    def management(self): return self._read("management")
     def logs(self, ident): raise APIError(503, "host_journal_not_exported")
 
 
 def export_once(collector, folder):
     folder = Path(folder)
+    try:
+        from management import broker_request
+        management = broker_request({'action': 'snapshot'})
+    except (OSError, ValueError, AttributeError):
+        management = {'sampledAt': __import__('server').utc(), 'leds': [], 'containers': [],
+                      'dockerAvailable': False, 'serviceControl': False, 'ledControl': False, 'dockerControl': False}
     payload = {"status": collector.snapshot(), "services": collector.services(), "network": collector.network(),
+               "management": management,
                "devices": collector.devices(), "exportedAt": time.time()}
     temporary = folder / "telemetry.tmp"
     temporary.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False), encoding="utf-8")

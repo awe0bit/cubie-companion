@@ -10,8 +10,8 @@ enum Brand {
     static let name = "CoreNest"
     static let chineseName = "栖核"
     static let tagline = "让设备与服务，各归其位。"
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.6.0"
-    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "7"
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.7.0"
+    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "8"
     static let accent = Color("AccentColor")
     // Blue filled controls use dark text in BOTH appearances for readable contrast.
     static let onAccent = Color(red: 0.07, green: 0.09, blue: 0.12)
@@ -22,10 +22,10 @@ enum AppTab: String, CaseIterable {
 }
 
 enum Layout {
-    static let pageInset: CGFloat = 20
-    static let cardInset: CGFloat = 20
-    static let cardRadius: CGFloat = 18
-    static let spacing: CGFloat = 16
+    static let pageInset: CGFloat = 16
+    static let cardInset: CGFloat = 14
+    static let cardRadius: CGFloat = 16
+    static let spacing: CGFloat = 10
 }
 
 enum Surface {

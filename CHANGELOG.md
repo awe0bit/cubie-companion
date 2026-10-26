@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — Compact management
+
+- Compact overview and searchable Docker/system service groups.
+- Native Liquid Glass only; a single native-to-embedded bottom safe-area handoff.
+- Confirmed LED modes and allowlisted Docker actions through a fixed-operation host
+  broker, without exposing Docker socket, shell or credentials to embedded pages.
+- Existing read-only deployments require explicit operator authorization for control.
+
 ## 0.3.1 — Access 扫码接入
 
 - 扫码支持短期 Access bootstrap；批准后交付该手机独立服务凭据，不把账户管理密钥放进二维码。

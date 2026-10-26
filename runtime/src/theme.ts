@@ -7,4 +7,4 @@ export function palette(dark: boolean) {
     warning: dark ? '#E8AF57' : '#8A6200', success: dark ? '#56C596' : '#2E7D64',
   };
 }
-export const layout = { inset: 20, gap: 16, radius: 18, cardInset: 20 };
+export const layout = { inset: 16, gap: 10, radius: 16, cardInset: 14 };

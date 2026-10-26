@@ -1,0 +1,16 @@
+[Unit]
+Description=CoreNest fixed-operation host management broker
+Requires=corenest-control.socket
+After=docker.service
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/corenest/backend/control.py --config /etc/corenest/control.json
+User=root
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/sys/devices
+UMask=0077

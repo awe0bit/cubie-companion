@@ -1,128 +1,160 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { send, subscribe } from './native';
 import { startUpdates } from './updates';
 import { layout, palette } from './theme';
+import { bytes, groupedServices, stateText } from './presentation';
 import type { Route, Snapshot } from './types';
 
-type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean };
-function bytes(value: number | null | undefined): string {
-  if (value == null) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let index = 0;
-  while (value >= 1000 && index < units.length - 1) { value /= 1000; index++; }
-  return `${value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })} ${units[index]}`;
-}
-
-export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false }: Props) {
+type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean; bottomInset?: number };
+export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false, bottomInset = 0 }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => JSON.parse(snapshotJSON));
+  const [filter, setFilter] = useState('全部');
+  const [query, setQuery] = useState('');
   const system = useColorScheme();
   const colors = palette((appearance === 'light' || appearance === 'dark' ? appearance : system) === 'dark');
   const { width, fontScale } = useWindowDimensions();
-  const oneColumn = fontScale > 1.4 || width < 350;
+  const narrow = fontScale > 1.4 || width < 350;
   const act = (action: string, id?: string) => send(client, action, id);
   useEffect(() => {
     const unsubscribe = subscribe(message => {
       if (message.type === 'corenest.snapshot' && message.snapshot) setSnapshot(message.snapshot);
     });
-    act('ready');
-    startUpdates(disableRemoteUpdates);
+    act('ready'); startUpdates(disableRemoteUpdates);
     return unsubscribe;
   }, [client]);
-
-  const text = (value: string, secondary = false, large = false) => <Text style={{ color: secondary ? colors.quiet : colors.ink, fontSize: large ? 30 : 15, fontWeight: large ? '700' : '400' }}>{value}</Text>;
-  const card = (children: React.ReactNode, key?: string) => <View key={key} style={[styles.card, { backgroundColor: colors.surface }]}>{children}</View>;
-  const row = (label: string, value: string) => <View key={label} style={[styles.info, fontScale > 1.4 && { flexDirection: 'column', alignItems: 'flex-start' }]}>
-    <Text style={{ color: colors.quiet, fontSize: 15 }}>{label}</Text>
-    <Text selectable style={{ color: colors.ink, fontSize: 15, flexShrink: 1, textAlign: fontScale > 1.4 ? 'left' : 'right' }}>{value}</Text>
-  </View>;
-  const link = (title: string, subtitle: string, action: string, id: string, deviceID?: string, symbol = '↗') => (
-    <Pressable key={id} accessibilityRole="button" accessibilityLabel={title} testID={id} onPress={() => act(action, deviceID)}
+  const label = (value: string, secondary = false, size = 13) => <Text style={{ color: secondary ? colors.quiet : colors.ink, fontSize: size }}>{value}</Text>;
+  const card = (children: React.ReactNode, key?: string, flush = false) => <View key={key} style={[styles.card, { backgroundColor: colors.surface, padding: flush ? 0 : layout.cardInset }]}>{children}</View>;
+  const separator = <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginHorizontal: 14 }} />;
+  const link = (title: string, subtitle: string, action: string, id: string, deviceID?: string, badge?: string, state?: string) => (
+    <Pressable key={id} accessibilityRole="button" accessibilityLabel={`${title}${state ? `，${stateText(state)}` : ''}`} testID={id} onPress={() => act(action, deviceID)}
       style={({ pressed }) => [styles.link, { opacity: pressed ? .55 : 1 }]}>
-      <View style={styles.linkText}><Text style={{ color: colors.ink, fontSize: 17, fontWeight: '600' }}>{title}</Text>{text(subtitle, true)}</View>
-      <Text accessibilityElementsHidden style={{ color: colors.accent, fontSize: 22 }}>{symbol}</Text>
+      {badge && <View style={[styles.icon, { backgroundColor: colors.background }]}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{badge}</Text></View>}
+      <View style={styles.linkText}>
+        <Text numberOfLines={narrow ? undefined : 1} style={{ color: colors.ink, fontSize: 15, fontWeight: '600' }}>{title}</Text>
+        {!!subtitle && <Text numberOfLines={narrow ? undefined : 1} style={{ color: colors.quiet, fontSize: 12 }}>{subtitle}</Text>}
+      </View>
+      {state && <View style={styles.status}><View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: ['active', 'running'].includes(state) ? colors.success : colors.warning }} />{label(stateText(state), true, 11)}</View>}
+      <Text accessibilityElementsHidden style={{ color: colors.quiet, fontSize: 19 }}>›</Text>
     </Pressable>
   );
-  const metric = (title: string, value: string, detail = '') => <View key={title} style={{ width: oneColumn ? '100%' : '48%' }}>
-    {card(<>{text(title, true)}<Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.7} style={{ color: colors.ink, fontSize: 28, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>{detail ? text(detail, true) : null}</>)}
+  const metric = (title: string, value: string, detail = '', fraction?: number) => <View key={title} style={[styles.metric, { width: narrow ? '100%' : '50%' }]}>
+    {label(title, true, 12)}
+    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.7} style={{ color: colors.ink, fontSize: 23, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
+    {!!detail && label(detail, true, 11)}
+    {fraction != null && <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.separator }}><View style={{ height: 3, borderRadius: 2, backgroundColor: fraction > .85 ? colors.warning : colors.accent, width: `${Math.max(0, Math.min(1, fraction)) * 100}%` }} /></View>}
   </View>;
   const b = snapshot.status;
   const hardware = snapshot.inventory;
-  return <ScrollView testID={`runtime-${route}`} style={{ backgroundColor: colors.background }}
-    contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={snapshot.refreshing} onRefresh={() => act('refresh')} tintColor={colors.accent} />}>
+  const managed = snapshot.management;
+  const containers = managed?.containers ?? [];
+  const groups = groupedServices(snapshot.services, containers, query, filter);
+  const running = snapshot.services.filter(s => s.state === 'active').length + containers.filter(c => c.state === 'running').length;
+  const highest = b?.temperatures.length ? Math.max(...b.temperatures.map(t => t.celsius)) : undefined;
+  return <ScrollView testID={`runtime-${route}`} style={{ flex: 1, backgroundColor: colors.background }}
+    contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    contentContainerStyle={[styles.page, { paddingBottom: bottomInset + 16 }]}
+    refreshControl={<RefreshControl refreshing={snapshot.refreshing} onRefresh={() => act('refresh')} tintColor={colors.accent} />}>
     <View style={styles.content}>
       <View accessibilityLabel={snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断，上次数据' : '已连接'} style={styles.banner}>
-        <Text style={{ color: colors.quiet, fontSize: 13 }}>{snapshot.demo ? '✧  演示数据' : snapshot.stale ? '●  连接中断 · 上次数据' : '●  已连接'}</Text>
-        {snapshot.refreshing && <ActivityIndicator color={colors.accent} size="small" />}
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: snapshot.stale ? colors.warning : snapshot.demo ? colors.quiet : colors.success }} />
+          {label(snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断 · 上次数据' : '实时连接', true, 11)}
+        </View>
+        {snapshot.refreshing ? <ActivityIndicator color={colors.accent} size="small" /> : label('下拉刷新', true, 11)}
       </View>
-      {snapshot.error ? <Text style={{ color: colors.warning }}>{snapshot.error}</Text> : null}
-      {snapshot.notice ? text(snapshot.notice, true) : null}
+      {!!snapshot.error && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.error}</Text>}
+      {!!snapshot.notice && label(snapshot.notice, true, 12)}
       {route === 'overview' && <>
-        {snapshot.demo && card(link('绑定开发板', '扫码后查看真实状态', 'open.binding', 'overview-connect'))}
+        {snapshot.demo && card(link('绑定开发板', '扫码查看真实状态', 'open.binding', 'overview-connect'), undefined, true)}
         {b ? <>
-          {card(<>
-            <View style={styles.heading}><Text style={{ color: colors.ink, fontSize: 17, fontWeight: '600', flexShrink: 1 }}>{b.hostname}</Text><Text style={{ color: colors.accent }}>CORENEST</Text></View>
-            {text('Cubie A7S', true)}
-            {b.temperatures.length > 0 && <View style={styles.temperature}>
-              <Text style={{ color: colors.ink, fontSize: 52, fontWeight: '500', fontVariant: ['tabular-nums'] }}>{Math.max(...b.temperatures.map(t => t.celsius)).toFixed(1)}°</Text>
-              {text('最高温度 · °C', true)}
+          {card(<View style={[styles.board, narrow && { flexDirection: 'column', alignItems: 'flex-start' }]}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 18, fontWeight: '600' }}>{b.hostname}</Text>
+              {label('Cubie A7S', true, 12)}
+              {b.uptimeSeconds != null && label(`已运行 ${Math.floor(b.uptimeSeconds / 3600)}h ${Math.floor(b.uptimeSeconds % 3600 / 60)}m`, true, 11)}
+            </View>
+            {highest != null && <View style={{ alignItems: 'flex-end', gap: 2 }}>
+              <Text style={{ color: highest >= 75 ? colors.warning : colors.ink, fontSize: 32, fontWeight: '500', fontVariant: ['tabular-nums'] }}>{highest.toFixed(1)}°</Text>
+              {label(highest >= 75 ? '温度偏高' : '最高温度', true, 11)}
             </View>}
-            {b.temperatures.some(t => t.celsius >= 75) && <Text style={{ color: colors.warning }}>温度偏高，请检查散热</Text>}
-            {b.uptimeSeconds != null && text(`已运行 ${Math.floor(b.uptimeSeconds / 3600)} 小时 ${Math.floor(b.uptimeSeconds % 3600 / 60)} 分钟`, true)}
-          </>)}
-          <View style={styles.metrics}>
-            {b.cpuPercent != null && metric('CPU', `${b.cpuPercent.toFixed(1)}%`, '实时利用率')}
-            {b.memoryUsedBytes != null && metric('内存', bytes(b.memoryUsedBytes), b.memoryTotalBytes != null ? `共 ${bytes(b.memoryTotalBytes)}` : '')}
-            {b.diskUsedBytes != null && metric('存储', bytes(b.diskUsedBytes), b.diskTotalBytes != null ? `共 ${bytes(b.diskTotalBytes)}` : '')}
-            {b.rxBytesPerSecond != null && metric('下载', `${bytes(b.rxBytesPerSecond)}/s`, b.txBytesPerSecond != null ? `上传 ${bytes(b.txBytesPerSecond)}/s` : '')}
+          </View>)}
+          {card(<View style={styles.metrics}>
+            {b.cpuPercent != null && metric('CPU', `${b.cpuPercent.toFixed(1)}%`, '实时负载', b.cpuPercent / 100)}
+            {b.memoryUsedBytes != null && metric('内存', bytes(b.memoryUsedBytes), `共 ${bytes(b.memoryTotalBytes)}`, b.memoryTotalBytes ? b.memoryUsedBytes / b.memoryTotalBytes : undefined)}
+            {b.diskUsedBytes != null && metric('存储', bytes(b.diskUsedBytes), `共 ${bytes(b.diskTotalBytes)}`, b.diskTotalBytes ? b.diskUsedBytes / b.diskTotalBytes : undefined)}
+            {b.rxBytesPerSecond != null && metric('网络 ↓ / ↑', `${bytes(b.rxBytesPerSecond)}/s`, `↑ ${bytes(b.txBytesPerSecond)}/s`)}
             {b.powerWatts != null && metric('功耗', `${b.powerWatts.toFixed(1)} W`)}
             {b.fanRPM != null && metric('风扇', `${Math.round(b.fanRPM)} RPM`)}
-          </View>
-        </> : card(text('等待设备数据', true))}
-        {card(link('网络连接', snapshot.network?.campusText ?? '等待数据', 'open.network', 'network-details'))}
+          </View>, undefined, true)}
+        </> : card(label('等待设备数据', true))}
+        {card(<>
+          {link('网络连接', snapshot.network?.campusText ?? '等待数据', 'open.network', 'network-details', undefined, 'Wi')}
+          {separator}
+          {link('设备控制', managed ? `${managed.leds.length} 个指示灯 · ${containers.length} 个容器` : '灯光与 Docker 管理', 'open.controls', 'overview-controls', undefined, '⌘')}
+        </>, undefined, true)}
       </>}
       {route === 'services' && <>
-        {text(`${snapshot.services.filter(s => s.state === 'active').length} / ${snapshot.services.length}`, false, true)}
-        {text('运行中的系统服务', true)}
-        {snapshot.services.length ? card(snapshot.services.slice().sort((a, b) => Number(a.state === 'active') - Number(b.state === 'active') || a.name.localeCompare(b.name)).map((s, i) => <React.Fragment key={s.id}>
-          {i > 0 && <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.separator }} />}
-          {link(s.name, s.stateText, 'open.service', `service-${s.id}`, s.id, '›')}
-        </React.Fragment>)) : card(text('暂无服务数据', true))}
+        <View style={styles.heading}>
+          <Text style={{ color: colors.ink, fontSize: 23, fontWeight: '600' }}>{running}<Text style={{ color: colors.quiet, fontSize: 13 }}> / {snapshot.services.length + containers.length} 运行中</Text></Text>
+          {label(`${containers.length} 个容器`, true, 12)}
+        </View>
+        <TextInput accessibilityLabel="搜索服务" testID="service-search" value={query} onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
+          placeholderTextColor={colors.quiet} clearButtonMode="while-editing" autoCorrect={false} autoCapitalize="none"
+          style={[styles.search, { color: colors.ink, backgroundColor: colors.surface }]} />
+        <View style={styles.filters}>
+          {['全部', 'Docker', '系统'].map(item => <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected: filter === item }} onPress={() => setFilter(item)}
+            style={[styles.filter, { backgroundColor: filter === item ? colors.ink : colors.surface }]}><Text style={{ color: filter === item ? colors.surface : colors.quiet, fontSize: 12, fontWeight: '600' }}>{item}</Text></Pressable>)}
+        </View>
+        {!snapshot.demo && snapshot.managementError && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.managementError}</Text>}
+        {groups.map(group => <View key={group.title} style={{ gap: 7 }}>
+          <View style={styles.heading}>{label(group.title, true, 12)}{label(String(group.items.length), true, 11)}</View>
+          {card(group.items.map((s, i) => <React.Fragment key={s.id}>
+            {i > 0 && separator}
+            {link(s.name, s.subtitle, s.kind === 'docker' ? 'open.container' : 'open.service', `${s.kind === 'docker' ? 'container' : 'service'}-${s.id}`, s.id, group.badge, s.state)}
+          </React.Fragment>), undefined, true)}
+        </View>)}
+        {!groups.length && card(label(query ? '没有匹配的服务' : '暂无服务数据', true))}
       </>}
       {route === 'devices' && <>
+        {card(link('灯光与设备控制', managed?.leds.length ? `${managed.leds.length} 个指示灯 · 支持恢复系统模式` : '查看管理权限与控制状态', 'open.controls', 'device-controls', undefined, '⌘'), undefined, true)}
         {hardware ? <>
-          {card(<>{text(b?.hostname ?? '开发板', false, true)}
-            {hardware.board.model && row('型号标识', hardware.board.model)}
-            {hardware.board.cpuCores != null && row('CPU 核心', `${hardware.board.cpuCores} 核`)}
-            {hardware.board.memoryBytes != null && row('系统内存', bytes(hardware.board.memoryBytes))}
-            {hardware.board.architecture && row('架构', hardware.board.architecture)}
-            {hardware.board.kernel && row('内核', hardware.board.kernel)}
+          {card(<>
+            <Text style={{ color: colors.ink, fontSize: 17, fontWeight: '600' }}>{b?.hostname ?? '开发板'}</Text>
+            {label([hardware.board.model, hardware.board.cpuCores != null ? `${hardware.board.cpuCores} 核` : '', bytes(hardware.board.memoryBytes)].filter(Boolean).join(' · '), true, 12)}
+            {label([hardware.board.architecture, hardware.board.kernel].filter(Boolean).join(' · '), true, 11)}
           </>)}
-          {(snapshot.inventoryError || snapshot.inventoryStale) && <Text style={{ color: colors.warning }}>{snapshot.inventoryError ?? '硬件信息已过期，等待设备重新连接。'}</Text>}
-          {([['storage', '存储'], ['usb', 'USB 总线'], ['network', '网卡'], ['bluetooth', '蓝牙']] as const).map(([category, title]) => {
+          {(snapshot.inventoryError || snapshot.inventoryStale) && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.inventoryError ?? '硬件信息已过期，等待重新连接。'}</Text>}
+          {([['storage', '存储', 'SD'], ['usb', 'USB 设备', 'USB'], ['network', '网络接口', 'NET'], ['bluetooth', '蓝牙控制器', 'BT']] as const).map(([category, title, badge]) => {
             const devices = hardware.devices.filter(d => d.category === category);
-            return devices.length ? <View key={category} style={{ gap: 10 }}>{text(title, true)}{card(devices.map((d, i) => <React.Fragment key={d.id}>
-              {i > 0 && <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.separator }} />}
-              {link(d.name, d.stateText, 'open.hardware', `hardware-${d.id}`, d.id, '›')}
-            </React.Fragment>))}</View> : null;
+            return devices.length ? <View key={category} style={{ gap: 7 }}><View style={styles.heading}>{label(title, true, 12)}{label(String(devices.length), true, 11)}</View>
+              {card(devices.map((d, i) => <React.Fragment key={d.id}>
+                {i > 0 && separator}
+                {link(d.name, d.stateText, 'open.hardware', `hardware-${d.id}`, d.id, badge)}
+              </React.Fragment>), undefined, true)}</View> : null;
           })}
-          {!hardware.devices.length && card(text('暂未识别到其他设备，插入 USB 设备后下拉刷新。', true))}
-          {text(`识别于 ${new Date(hardware.sampledAt).toLocaleTimeString('zh-CN')}`, true)}
-        </> : card(text(snapshot.inventoryError ?? '正在读取设备，连接主板后自动识别。', true))}
+          {!hardware.devices.length && card(label('暂未识别到其他设备，插入后下拉刷新。', true))}
+          {label(`识别于 ${new Date(hardware.sampledAt).toLocaleTimeString('zh-CN')}`, true, 11)}
+        </> : card(label(snapshot.inventoryError ?? '正在读取硬件信息', true))}
       </>}
     </View>
   </ScrollView>;
 }
-
 const styles = StyleSheet.create({
-  page: { padding: layout.inset, paddingBottom: 32, alignItems: 'center' },
+  page: { paddingHorizontal: layout.inset, paddingTop: 4, alignItems: 'center' },
   content: { width: '100%', maxWidth: 720, gap: layout.gap },
-  card: { padding: layout.cardInset, borderRadius: layout.radius, gap: 12 },
-  banner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  info: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  heading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  temperature: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 8 },
-  linkText: { flex: 1, gap: 5 },
+  card: { borderRadius: layout.radius, gap: 6, overflow: 'hidden' },
+  banner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 },
+  heading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  board: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', padding: 4 },
+  metric: { padding: 10, gap: 5 },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingVertical: 10, paddingHorizontal: 14 },
+  linkText: { flex: 1, gap: 4 },
+  icon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 68 },
+  search: { borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, fontSize: 14, minHeight: 42 },
+  filters: { flexDirection: 'row', gap: 7 },
+  filter: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, minHeight: 34, justifyContent: 'center' },
 });

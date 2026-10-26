@@ -21,7 +21,7 @@ extension Notification.Name {
 final class RuntimeBridge: ObservableObject {
     static let shared = RuntimeBridge()
     @Published private(set) var updateStage = "idle"
-    @Published private(set) var runtime = "0.6.0"
+    @Published private(set) var runtime = "0.7.0"
     @Published private(set) var channel = "not-configured"
     @Published private(set) var readyClients = Set<String>()
     private weak var store: BoardStore?
@@ -53,8 +53,10 @@ final class RuntimeBridge: ObservableObject {
         var result: [String: Any] = [
             "demo": store.demo, "stale": store.stale, "refreshing": store.refreshing,
             "inventoryStale": store.inventoryStale,
-            "services": store.services.map { ["id": $0.id, "name": $0.name, "state": $0.state, "stateText": $0.stateText] },
+            "services": store.services.map { ["id": $0.id, "name": $0.name, "unit": $0.unit, "state": $0.state, "stateText": $0.stateText] },
         ]
+        if let management = store.management { result["management"] = object(management) }
+        if let error = store.managementError { result["managementError"] = error }
         if let status = store.status { result["status"] = object(status) }
         if let inventory = store.inventory {
             result["inventory"] = ["board": object(inventory.board), "sampledAt": inventory.sampledAt,
@@ -110,7 +112,9 @@ final class RuntimeBridge: ObservableObject {
         guard let store else { return }
         switch action {
         case "refresh": await store.refresh()
-        case "open.binding", "open.network", "open.about": break
+        case "open.binding", "open.network", "open.about", "open.controls": break
+        case "open.container":
+            guard let id = message["id"] as? String, store.management?.containers.contains(where: { $0.id == id }) == true else { return }
         case "open.service":
             guard let id = message["id"] as? String, store.services.contains(where: { $0.id == id }) else { return }
         case "open.hardware":
@@ -145,21 +149,25 @@ struct RuntimeScreen: View {
             if fallback {
                 nativeFallback
             } else {
-                ZStack {
+                GeometryReader { geometry in
+                  ZStack {
                     ReactNativeView(moduleName: "main", initialProps: [
                         "route": route.rawValue, "client": client,
                         "snapshotJSON": RuntimeBridge.json(store),
                         "appearance": LaunchMode.argument(after: "--preview-appearance") ?? "system",
                         "disableRemoteUpdates": LaunchMode.isUITesting,
+                        "bottomInset": geometry.safeAreaInsets.bottom,
                     ])
+                    .ignoresSafeArea(.container, edges: .bottom)
                     if !ready {
                         ProgressView("正在载入界面").frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Surface.canvas)
                     }
+                  }
                 }
             }
         }
-        .background(Surface.canvas)
+        .background(Surface.canvas.ignoresSafeArea())
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if route == .devices && !fallback {
@@ -182,6 +190,8 @@ struct RuntimeScreen: View {
             case "open.hardware": HardwareDetailView(deviceID: item.value)
             case "open.network": NetworkView()
             case "open.binding": SettingsView()
+            case "open.controls": DeviceControlsView()
+            case "open.container": ContainerDetailView(containerID: item.value)
             default: AboutView()
             }
         }

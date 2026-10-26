@@ -1,5 +1,6 @@
 """Optional root broker, socket-activated. Fixed operations, no command strings."""
 import json
+import argparse
 import os
 from pathlib import Path
 import socket
@@ -23,6 +24,9 @@ def resolve(payload, config):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', default='/etc/a7s-companion/control.json')
+    args = parser.parse_args()
     if os.environ.get("LISTEN_PID") != str(os.getpid()) or os.environ.get("LISTEN_FDS") != "1":
         raise SystemExit("systemd_socket_required")
     listener = socket.fromfd(3, socket.AF_UNIX, socket.SOCK_STREAM)
@@ -32,9 +36,9 @@ def main():
         with client:
             client.settimeout(2)
             try:
-                config = json.loads(Path("/etc/a7s-companion/control.json").read_text())
+                config = json.loads(Path(args.config).read_text())
                 _, uid, _ = struct.unpack("3i", client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-                if uid != config["apiUID"] or type(config["apiUID"]) is not int:
+                if uid not in config.get('allowedUIDs', [config.get('apiUID')]):
                     raise ValueError("peer_not_allowed")
                 body = b""
                 while b"\n" not in body and len(body) <= 1024:
@@ -44,14 +48,25 @@ def main():
                     body += part
                 if len(body) > 1024 or not body.endswith(b"\n"):
                     raise ValueError("invalid_frame")
-                args = resolve(json.loads(body), config)
+                payload = json.loads(body)
+                if payload == {'action': 'snapshot'}:
+                    from management import snapshot
+                    client.sendall(json.dumps(snapshot(config)).encode() + b'\n')
+                    continue
+                if uid != config.get('apiUID'):
+                    raise ValueError('read_only_peer')
                 now = time.monotonic()
                 if now - last_action < 10:
                     raise ValueError("cooldown")
                 last_action = now
-                result = subprocess.run(args, capture_output=True, timeout=5,
-                                        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
-                accepted = result.returncode == 0
+                if isinstance(payload, dict) and ('led' in payload or 'container' in payload):
+                    from management import execute
+                    accepted = execute(payload, config)['accepted']
+                else:
+                    command = resolve(payload, config)
+                    result = subprocess.run(command, capture_output=True, timeout=5,
+                                            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
+                    accepted = result.returncode == 0
             except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
                 accepted = False
             try:
