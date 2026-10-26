@@ -11,6 +11,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ProtectControlGroups=true
+ProtectKernelTunables=true
 RestrictSUIDSGID=true
-ReadWritePaths=/sys/devices
+# Operator drop-in grants only the real LED sysfs directories on this board.
 UMask=0077

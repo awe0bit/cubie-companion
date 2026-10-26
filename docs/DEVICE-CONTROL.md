@@ -22,6 +22,8 @@ before upgrading. Preserve the state volume, token hashes and tunnel configurati
    container needs this supplementary GID, **not** the Docker group.
 4. Create root-only `/etc/corenest/control.json` with the schema below. Fill in actual
    peer UIDs, LED sysfs names and container names locally. Never commit this file.
+   Add a service drop-in with `ReadWritePaths=` for only those LEDs' resolved sysfs
+   directories; the broker otherwise keeps kernel tunables read-only.
 5. Bind `/run/corenest-control` to the same path in the API container (read-only);
    set `CORENEST_CONTROL_SOCKET=/run/corenest-control/control.sock` there.
 6. Enable the desired API flags in `/data/config.json`. The broker and API must both
