@@ -10,6 +10,13 @@ ROOT=Path(__file__).resolve().parents[2]
 
 
 class BrandTests(unittest.TestCase):
+    def test_isolated_runtime_has_device_and_simulator_loader_paths(self):
+        project=(ROOT/'ios/Cubie.xcodeproj/project.pbxproj').read_text()
+        self.assertEqual(project.count('LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks")'),2)
+        self.assertIn('CoreNestRuntimePackage-release',project)
+        workflow=(ROOT/'.github/workflows/build-ios.yml').read_text()
+        self.assertIn('tools/runtime_smoke.py',workflow)
+
     def test_opaque_1024_app_icons_match_manifest(self):
         folder=ROOT/'ios/Cubie/Assets.xcassets/AppIcon.appiconset'
         hashes=json.loads((ROOT/'brand/exports/manifest.json').read_text())
