@@ -2,9 +2,11 @@ import SwiftUI
 import Combine
 import CoreNestRuntime
 
+@MainActor
 final class RuntimeAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        _ = RuntimeBridge.shared // Register before any JS root can emit its ready event.
         ReactNativeHostManager.shared.initialize()
         return true
     }
@@ -21,6 +23,7 @@ final class RuntimeBridge: ObservableObject {
     @Published private(set) var updateStage = "idle"
     @Published private(set) var runtime = "0.6.0"
     @Published private(set) var channel = "not-configured"
+    @Published private(set) var readyClients = Set<String>()
     private weak var store: BoardStore?
     private var subscription: AnyCancellable?
     private var emission: Task<Void, Never>?
@@ -93,11 +96,16 @@ final class RuntimeBridge: ObservableObject {
             if let value = message["channel"] as? String, value.count < 64 { channel = value }
             return
         }
-        guard message["type"] as? String == "corenest.action", let store,
+        guard message["type"] as? String == "corenest.action",
               let action = message["action"] as? String, let client = message["client"] as? String,
               UUID(uuidString: client) != nil else { return }
+        if action == "ready" {
+            readyClients.insert(client)
+            emit()
+            return
+        }
+        guard let store else { return }
         switch action {
-        case "ready": emit()
         case "refresh": await store.refresh()
         case "open.binding", "open.network", "open.about": break
         case "open.service":
@@ -118,11 +126,12 @@ private struct RuntimeDestination: Identifiable, Hashable {
 
 struct RuntimeScreen: View {
     @EnvironmentObject private var store: BoardStore
+    @ObservedObject private var bridge = RuntimeBridge.shared
     @State private var client = UUID().uuidString
-    @State private var ready = false
     @State private var fallback = false
     @State private var destination: RuntimeDestination?
     let route: AppTab
+    private var ready: Bool { bridge.readyClients.contains(client) }
 
     private var title: String {
         switch route { case .overview: return Brand.chineseName; case .services: return "服务"; case .devices: return "设备" }
@@ -138,6 +147,7 @@ struct RuntimeScreen: View {
                         "route": route.rawValue, "client": client,
                         "snapshotJSON": RuntimeBridge.json(store),
                         "appearance": LaunchMode.argument(after: "--preview-appearance") ?? "system",
+                        "disableRemoteUpdates": LaunchMode.isUITesting,
                     ])
                     if !ready {
                         ProgressView("正在载入界面").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -176,8 +186,7 @@ struct RuntimeScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: .runtimeAction)) { event in
             guard let message = event.userInfo, message["client"] as? String == client,
                   let action = message["action"] as? String else { return }
-            if action == "ready" { ready = true }
-            else if action.hasPrefix("open.") {
+            if action.hasPrefix("open.") {
                 let value = (message["id"] as? String) ?? ""
                 destination = RuntimeDestination(action: action, value: value)
             }

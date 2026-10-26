@@ -84,6 +84,8 @@ jobs:
           else
             python3 tools/select_simulator.py --prepare
           fi
+      - name: Smoke launch embedded pages and collect actual console
+        run: python3 tools/runtime_smoke.py --device "$TEST_DEVICE_ID" --app build/simulator/Build/Products/Debug-iphonesimulator/Cubie.app --output build/runtime-smoke
       - name: Run XCTest
         run: |
           set -o pipefail
@@ -95,6 +97,14 @@ jobs:
       - name: Capture real iOS 26 light and dark screenshots
         if: ${{ !cancelled() && matrix.runtime == 'modern' && steps.simulator_build.outcome == 'success' && env.DEVICE_ID != '' }}
         run: python3 tools/capture_screenshots.py --device "$DEVICE_ID" --app build/simulator/Build/Products/Debug-iphonesimulator/Cubie.app --output build/screenshots
+      - name: Save startup diagnostics
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: CoreNest-runtime-startup-${{ matrix.runtime }}
+          path: build/runtime-smoke
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Upload native screenshots
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: ${{ always() && matrix.runtime == 'modern' }}

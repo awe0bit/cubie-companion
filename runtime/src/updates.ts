@@ -32,9 +32,10 @@ export function checkUpdate(force = false): Promise<void> {
   })().catch(() => publish('error')).finally(() => { task = undefined; });
   return task;
 }
-export function startUpdates() {
+export function startUpdates(disableRemote = false) {
   if (started) { reportUpdate(state); return; }
   started = true;
+  if (disableRemote) { publish('disabled'); return; }
   void checkUpdate();
   AppState.addEventListener('change', next => { if (next === 'active' && state.stage !== 'pending') void checkUpdate(); });
   subscribe(message => { if (message.command === 'check-update') void checkUpdate(true); });

@@ -5,7 +5,7 @@ import { startUpdates } from './updates';
 import { layout, palette } from './theme';
 import type { Route, Snapshot } from './types';
 
-type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark' };
+type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean };
 function bytes(value: number | null | undefined): string {
   if (value == null) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -14,7 +14,7 @@ function bytes(value: number | null | undefined): string {
   return `${value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })} ${units[index]}`;
 }
 
-export default function App({ route, client, snapshotJSON, appearance }: Props) {
+export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => JSON.parse(snapshotJSON));
   const system = useColorScheme();
   const colors = palette((appearance === 'light' || appearance === 'dark' ? appearance : system) === 'dark');
@@ -26,7 +26,7 @@ export default function App({ route, client, snapshotJSON, appearance }: Props) 
       if (message.type === 'corenest.snapshot' && message.snapshot) setSnapshot(message.snapshot);
     });
     act('ready');
-    startUpdates();
+    startUpdates(disableRemoteUpdates);
     return unsubscribe;
   }, [client]);
 

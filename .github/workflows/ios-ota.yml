@@ -30,7 +30,6 @@ jobs:
     env:
       CORENEST_EXPO_PROJECT_ID: ${{ vars.CORENEST_EXPO_PROJECT_ID }}
       CORENEST_OTA_CHANNEL: ${{ inputs.channel }}
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       CI: '1'
     defaults:
       run:
@@ -40,12 +39,19 @@ jobs:
         with:
           ref: ${{ inputs.source_ref }}
           persist-credentials: false
+          fetch-depth: 0
+      - name: Only publish reviewed commits from this repository main history
+        working-directory: .
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: runtime/package-lock.json
       - name: Require separate CoreNest project authorization
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           test -n "$EXPO_TOKEN" || { echo 'EXPO_TOKEN is not configured. Nothing was published.'; exit 1; }
           test -n "$CORENEST_EXPO_PROJECT_ID" || { echo 'Independent CoreNest project is not configured.'; exit 1; }
@@ -57,4 +63,6 @@ jobs:
         run: python3 tools/privacy_check.py
       - run: npm run export:ios
       - name: Publish compatible content (no Apple/board credentials)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: npx --yes eas-cli@25.3.0 update --channel "$CORENEST_OTA_CHANNEL" --platform ios --message "CoreNest $(git rev-parse --short HEAD)" --non-interactive
