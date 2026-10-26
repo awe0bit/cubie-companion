@@ -144,5 +144,6 @@ final class CubieTests: XCTestCase {
         XCTAssertFalse(store.canReboot)
         XCTAssertNil(store.lastContact)
         XCTAssertEqual(store.servicesSampledAt, Demo.status.sampledAt)
+        XCTAssertEqual(Demo.status.memoryTotalBytes, Demo.inventory.board.memoryBytes)
     }
 }

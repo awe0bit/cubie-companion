@@ -199,7 +199,7 @@ enum Demo {
         requiresAttention: false, attemptsLastHour: 2, tunnelReady: true)
     static let inventory = DeviceInventory(sampledAt: "2026-01-01T09:41:00Z",
         board: BoardHardware(model: "Demo board", architecture: "aarch64", kernel: "Linux · 示例",
-                             cpuCores: 4, memoryBytes: 4_294_967_296), devices: [
+                             cpuCores: 4, memoryBytes: status.memoryTotalBytes), devices: [
             HardwareDevice(id: "storage:demo", category: "storage", name: "SD 卡 · 示例", node: "/dev/mmcblk0",
                 bus: "sd", driver: nil, state: "detected", vendorID: nil, productID: nil,
                 capacityBytes: 32_000_000_000, speedMbps: nil, removable: true),
