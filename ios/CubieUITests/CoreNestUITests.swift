@@ -31,7 +31,12 @@ final class CoreNestUITests: XCTestCase {
     private func reveal(_ element: XCUIElement, app: XCUIApplication) {
         for _ in 0..<7 {
             if element.exists && element.isHittable { return }
-            app.scrollViews.firstMatch.swipeUp()
+            let containers = [app.scrollViews.firstMatch, app.collectionViews.firstMatch, app.tables.firstMatch]
+            guard let container = containers.first(where: { $0.exists }) else {
+                XCTFail("No real scroll container is available")
+                return
+            }
+            container.swipeUp()
         }
         XCTAssertTrue(element.isHittable)
     }
