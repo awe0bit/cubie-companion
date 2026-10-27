@@ -63,6 +63,7 @@ jobs:
         run: python3 tools/privacy_check.py
       - run: npm run export:ios
       - name: Publish compatible content (no Apple/board credentials)
+        working-directory: .
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx --yes eas-cli@25.3.0 update --channel "$CORENEST_OTA_CHANNEL" --platform ios --message "CoreNest $(git rev-parse --short HEAD)" --non-interactive
+        run: python3 tools/publish_ota.py --channel "$CORENEST_OTA_CHANNEL"

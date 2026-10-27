@@ -23,6 +23,9 @@ final class RuntimeBridge: ObservableObject {
     @Published private(set) var updateStage = "idle"
     @Published private(set) var runtime = "0.7.0"
     @Published private(set) var channel = "not-configured"
+    @Published private(set) var launchUpdateID = ""
+    @Published private(set) var embeddedLaunch = true
+    @Published private(set) var emergencyLaunch = false
     @Published private(set) var readyClients = Set<String>()
     private weak var store: BoardStore?
     private var subscription: AnyCancellable?
@@ -96,6 +99,9 @@ final class RuntimeBridge: ObservableObject {
             if let stage = message["stage"] as? String, allowed.contains(stage) { updateStage = stage }
             if let value = message["runtime"] as? String, value.count < 64 { runtime = value }
             if let value = message["channel"] as? String, value.count < 64 { channel = value }
+            if let value = message["launchUpdateID"] as? String, value.isEmpty || UUID(uuidString: value) != nil { launchUpdateID = value }
+            if let value = message["embeddedLaunch"] as? Bool { embeddedLaunch = value }
+            if let value = message["emergencyLaunch"] as? Bool { emergencyLaunch = value }
             return
         }
         guard message["type"] as? String == "corenest.action",

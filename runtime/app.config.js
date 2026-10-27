@@ -13,7 +13,7 @@ if (!['preview', 'production'].includes(channel)) throw new Error('Unknown OTA c
 
 module.exports = {
   expo: {
-    name: 'CoreNest', slug: 'corenest-ios-runtime', version: '0.7.0',
+    name: 'CoreNest', slug: 'corenest-ios-runtime', version: '0.7.1',
     platforms: ['ios'], orientation: 'default', userInterfaceStyle: 'automatic',
     ios: { bundleIdentifier: 'org.corenest.app', supportsTablet: true },
     plugins: [

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — OTA commissioning
+
+- Independent OTA project is supplied through repository configuration, not source.
+- About displays embedded/OTA launch source, update ID and emergency recovery state.
+- Publish with an explicit SDK 57 environment and suppress account-bearing CLI logs.
+- Native compatibility runtime remains 0.7.0; first OTA enablement requires this new IPA.
+
 ## 0.7.0 — Compact management
 
 - Compact overview and searchable Docker/system service groups.

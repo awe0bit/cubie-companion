@@ -23,6 +23,15 @@
 
 ## 验证与发布
 
+发布使用独立的 Developer 机器人令牌，不复用个人登录会话或其他应用的令牌；它没有
+账户管理/付费权限。机器人权限范围仍是其所属 Expo 账户，并非项目级隔离。
+`tools/publish_ota.py` 捕获 EAS CLI 原始输出，只公开校验后的更新 ID、分组 ID、渠道、
+runtime 和源码提交，不把账户名或控制台链接写入公开 CI 日志。SDK 57 发布显式选择
+与渠道同名的 EAS environment；发布结果不确定时不自动重试。
+
+0.7.1 的原生兼容 runtime 仍为 0.7.0。更新地址首次被嵌入的新安装包需要重装一次；
+之后“关于栖核”会分别显示页面来源与页面 ID，可核实下载是否真正于冷启动后生效。
+
 正常 IPA 工作流先检查隐私、TypeScript、OTA 生命周期，然后在 macOS 构建真实 Brownfield Package；新旧 iOS 模拟器运行交互测试，最后打包 arm64 iPhoneOS 未签 IPA。
 
 ```sh

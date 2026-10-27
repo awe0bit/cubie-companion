@@ -7,7 +7,8 @@ const ts = require('typescript');
 function controller({ enabled = true, available = false, fail = false } = {}) {
   const states = [];
   let checks = 0, downloads = 0, listener;
-  const updates = { isEnabled: enabled, runtimeVersion: '0.6.0', channel: 'production',
+  const updates = { isEnabled: enabled, runtimeVersion: '0.7.0', channel: 'production',
+    updateId: '00000000-0000-4000-8000-000000000001', isEmbeddedLaunch: false, isEmergencyLaunch: false,
     checkForUpdateAsync: async () => { checks++; if (fail) throw new Error('private-network-detail'); return { isAvailable: available }; },
     fetchUpdateAsync: async () => { downloads++; },
   };
@@ -29,6 +30,8 @@ test('concurrent roots share one check and downloaded update is not re-fetched',
   assert.equal(c.checks(), 1);
   assert.equal(c.downloads(), 1);
   assert.equal(c.states.at(-1).stage, 'pending');
+  assert.equal(c.states.at(-1).embeddedLaunch, false);
+  assert.equal(c.states.at(-1).launchUpdateID, '00000000-0000-4000-8000-000000000001');
   await c.exports.checkUpdate(true);
   assert.equal(c.checks(), 1);
 });

@@ -20,4 +20,4 @@ export type Snapshot = {
     devices: Hardware[]; sampledAt: string;
   };
 };
-export type OTAState = { stage: 'disabled' | 'idle' | 'checking' | 'downloading' | 'pending' | 'current' | 'error'; progress: number; runtime: string; channel: string };
+export type OTAState = { stage: 'disabled' | 'idle' | 'checking' | 'downloading' | 'pending' | 'current' | 'error'; progress: number; runtime: string; channel: string; launchUpdateID: string; embeddedLaunch: boolean; emergencyLaunch: boolean };

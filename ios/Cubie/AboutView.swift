@@ -23,6 +23,14 @@ struct AboutView: View {
             Section("页面热更新") {
                 LabeledContent("运行时", value: runtime.runtime)
                 LabeledContent("通道", value: runtime.channel == "not-configured" ? "未配置" : runtime.channel)
+                LabeledContent("页面来源", value: runtime.embeddedLaunch ? "安装包内置" : "OTA 缓存")
+                if !runtime.launchUpdateID.isEmpty {
+                    LabeledContent("页面 ID", value: String(runtime.launchUpdateID.prefix(8)))
+                }
+                if runtime.emergencyLaunch {
+                    Text("上次更新未能正常启动，已使用可用的内置页面恢复。")
+                        .font(.caption).foregroundStyle(.orange)
+                }
                 Text(updateMessage).font(.subheadline).accessibilityIdentifier("ota-status")
                 if runtime.updateStage != "disabled" && runtime.channel != "not-configured" {
                     Button("检查页面更新") { runtime.checkUpdate() }

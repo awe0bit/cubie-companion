@@ -10,6 +10,8 @@ let started = false;
 let state: OTAState = {
   stage: Updates.isEnabled ? 'idle' : 'disabled', progress: 0,
   runtime: Updates.runtimeVersion ?? 'embedded', channel: Updates.channel ?? 'not-configured',
+  launchUpdateID: Updates.updateId ?? '', embeddedLaunch: Updates.isEmbeddedLaunch ?? true,
+  emergencyLaunch: Updates.isEmergencyLaunch ?? false,
 };
 function publish(stage: OTAState['stage'], progress = 0) {
   state = { ...state, stage, progress };
