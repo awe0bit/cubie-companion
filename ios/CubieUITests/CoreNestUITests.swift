@@ -227,10 +227,21 @@ final class CoreNestUITests: XCTestCase {
         privacy.tap()
         XCTAssertTrue(app.navigationBars["隐私与安全"].waitForExistence(timeout: 5))
         app.navigationBars.buttons.firstMatch.tap()
+        let settingsBar = app.navigationBars["设置"]
+        XCTAssertTrue(settingsBar.waitForExistence(timeout: 5))
         let binding = app.buttons["settings-binding"]
-        // Returning from a detail preserves scroll position. Scroll back to the first group.
-        if !binding.isHittable { app.collectionViews.firstMatch.swipeDown() }
+        // At AX sizes iOS 26 can report a partially occluded row as hittable.
+        // Bring the whole first row below the navigation bar before tapping it.
+        for _ in 0..<5 {
+            if binding.isHittable && binding.frame.minY > settingsBar.frame.maxY { break }
+            let containers = [app.collectionViews.firstMatch, app.tables.firstMatch, app.scrollViews.firstMatch]
+            guard let container = containers.first(where: { $0.exists }) else {
+                return XCTFail("No settings list is available")
+            }
+            container.swipeDown()
+        }
         XCTAssertTrue(binding.isHittable)
+        XCTAssertGreaterThan(binding.frame.minY, settingsBar.frame.maxY)
         binding.tap()
         XCTAssertTrue(app.navigationBars["绑定"].waitForExistence(timeout: 5))
         reveal(app.buttons["scan-pair"], app: app)
