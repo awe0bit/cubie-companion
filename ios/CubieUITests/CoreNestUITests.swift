@@ -138,6 +138,7 @@ final class CoreNestUITests: XCTestCase {
         let app = launch()
         explore(app)
         app.tabBars.buttons["服务"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["runtime-services"].waitForExistence(timeout: 15))
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
