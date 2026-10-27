@@ -142,6 +142,7 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
         search.typeText("demo-blog")
+        XCTAssertEqual(search.value as? String, "demo-blog", "Fast typing must not lose characters when results re-render")
         let container = app.buttons["container-" + String(repeating: "a", count: 64)]
         XCTAssertTrue(container.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["service-panel"].exists)

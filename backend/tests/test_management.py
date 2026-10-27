@@ -29,6 +29,19 @@ class ManagementTests(unittest.TestCase):
         self.assertFalse(value['leds'][0]['controllable'])
         self.assertFalse(value['containers'][0]['controllable'])
 
+    def test_single_roundtrip_snapshot_preserves_roles_and_partial_availability(self):
+        value = call(self.app, '/v1/snapshot')['body']
+        self.assertTrue(value['capabilities']['snapshotBundle'])
+        self.assertFalse(value['capabilities']['ledControl'])
+        self.assertFalse(value['management']['leds'][0]['controllable'])
+        self.assertEqual(set(value), {'status', 'services', 'network', 'capabilities', 'management', 'inventory'})
+        with patch.object(self.app.collector, 'management', side_effect=APIError(503, 'unavailable')):
+            value = call(self.app, '/v1/snapshot', token=ADMIN)['body']
+            self.assertIsNone(value['management'])
+            self.assertFalse(value['capabilities']['ledControl'])
+            self.assertFalse(value['capabilities']['serviceControl'])
+            self.assertIsNotNone(value['status'])
+
     def test_capabilities_reflect_host_and_role(self):
         self.assertFalse(call(self.app, '/v1/capabilities')['body']['ledControl'])
         self.assertTrue(call(self.app, '/v1/capabilities', token=ADMIN)['body']['dockerControl'])

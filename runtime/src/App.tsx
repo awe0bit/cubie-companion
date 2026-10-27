@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { send, subscribe } from './native';
 import { startUpdates } from './updates';
+import { ManualRefresh } from './refresh';
 import { layout, palette } from './theme';
 import { bytes, groupedServices, stateText } from './presentation';
 import type { Route, Snapshot } from './types';
@@ -11,6 +12,11 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const [snapshot, setSnapshot] = useState<Snapshot>(() => JSON.parse(snapshotJSON));
   const [filter, setFilter] = useState('全部');
   const [query, setQuery] = useState('');
+  const [pulling, setPulling] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState('');
+  const manualRefresh = useRef<ManualRefresh | null>(null);
+  if (!manualRefresh.current) manualRefresh.current = new ManualRefresh(
+    () => send(client, 'refresh'), (pulling, feedback) => { setPulling(pulling); setRefreshFeedback(feedback); });
   const system = useColorScheme();
   const colors = palette((appearance === 'light' || appearance === 'dark' ? appearance : system) === 'dark');
   const { width, fontScale } = useWindowDimensions();
@@ -18,10 +24,16 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const act = (action: string, id?: string) => send(client, action, id);
   useEffect(() => {
     const unsubscribe = subscribe(message => {
-      if (message.type === 'corenest.snapshot' && message.snapshot) setSnapshot(message.snapshot);
+      if (message.type === 'corenest.snapshot' && message.snapshot) {
+        setSnapshot(message.snapshot);
+        manualRefresh.current?.snapshot(message.snapshot.refreshing, message.snapshot.refreshAcknowledgement === true);
+      }
+      if (message.type === 'corenest.refresh' && message.client === client) {
+        manualRefresh.current?.finish();
+      }
     });
     act('ready'); startUpdates(disableRemoteUpdates);
-    return unsubscribe;
+    return () => { unsubscribe(); manualRefresh.current?.dispose(); };
   }, [client]);
   const label = (value: string, secondary = false, size = 13) => <Text style={{ color: secondary ? colors.quiet : colors.ink, fontSize: size }}>{value}</Text>;
   const card = (children: React.ReactNode, key?: string, flush = false) => <View key={key} style={[styles.card, { backgroundColor: colors.surface, padding: flush ? 0 : layout.cardInset }]}>{children}</View>;
@@ -53,19 +65,20 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const highest = b?.temperatures.length ? Math.max(...b.temperatures.map(t => t.celsius)) : undefined;
   return <ScrollView testID={`runtime-${route}`} style={{ flex: 1, backgroundColor: colors.background }}
     contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
-    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets
     contentContainerStyle={[styles.page, { paddingBottom: bottomInset + 16 }]}
-    refreshControl={<RefreshControl refreshing={snapshot.refreshing} onRefresh={() => act('refresh')} tintColor={colors.accent} />}>
+    refreshControl={<RefreshControl testID="manual-refresh" refreshing={pulling} onRefresh={() => manualRefresh.current?.start(snapshot.demo)} tintColor={colors.accent} />}>
     <View style={styles.content}>
       <View accessibilityLabel={snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断，上次数据' : '已连接'} style={styles.banner}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: snapshot.stale ? colors.warning : snapshot.demo ? colors.quiet : colors.success }} />
           {label(snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断 · 上次数据' : '实时连接', true, 11)}
         </View>
-        {snapshot.refreshing ? <ActivityIndicator color={colors.accent} size="small" /> : label('下拉刷新', true, 11)}
+        {label('下拉刷新', true, 11)}
       </View>
       {!!snapshot.error && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.error}</Text>}
       {!!snapshot.notice && label(snapshot.notice, true, 12)}
+      {!!refreshFeedback && <Text style={{ color: colors.warning, fontSize: 12 }}>{refreshFeedback}</Text>}
       {route === 'overview' && <>
         {snapshot.demo && card(link('绑定开发板', '扫码查看真实状态', 'open.binding', 'overview-connect'), undefined, true)}
         {b ? <>
@@ -100,8 +113,9 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
           <Text style={{ color: colors.ink, fontSize: 23, fontWeight: '600' }}>{running}<Text style={{ color: colors.quiet, fontSize: 13 }}> / {snapshot.services.length + containers.length} 运行中</Text></Text>
           {label(`${containers.length} 个容器`, true, 12)}
         </View>
-        <TextInput accessibilityLabel="搜索服务" testID="service-search" value={query} onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
+        <TextInput accessibilityLabel="搜索服务" testID="service-search" defaultValue="" onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
           placeholderTextColor={colors.quiet} clearButtonMode="while-editing" autoCorrect={false} autoCapitalize="none"
+          returnKeyType="search" onSubmitEditing={Keyboard.dismiss}
           style={[styles.search, { color: colors.ink, backgroundColor: colors.surface }]} />
         <View style={styles.filters}>
           {['全部', 'Docker', '系统'].map(item => <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected: filter === item }} onPress={() => setFilter(item)}

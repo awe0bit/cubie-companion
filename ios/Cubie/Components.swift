@@ -21,7 +21,7 @@ struct Page<Content: View>: View {
             }.frame(maxWidth: 640).frame(maxWidth: .infinity).padding(Layout.pageInset)
         }
         .background(Surface.canvas)
-        .refreshable { await store.refresh() }
+        .refreshable { await store.refresh(manual: true) }
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -39,7 +39,6 @@ struct ConnectionBanner: View {
                     Circle().fill(store.stale ? .orange : .teal).frame(width: 7, height: 7)
                     Text(store.stale ? "连接中断 · 上次数据" : "已连接")
                     Spacer()
-                    if store.refreshing { ProgressView().controlSize(.mini) }
                     if let last = store.lastContact {
                         Text(last.formatted(date: .omitted, time: .standard)).monospacedDigit()
                     }

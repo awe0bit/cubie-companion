@@ -3,6 +3,27 @@ import UIKit
 @testable import Cubie
 
 final class CubieTests: XCTestCase {
+    @MainActor func testRefreshCoalescesPollAndPullIntoOneSnapshotRequest() async throws {
+        let caps = try JSONDecoder().decode(Capabilities.self, from: Data(#"{"apiVersion":1,"role":"viewer","serviceControl":false,"deviceReboot":false,"rawLogs":false,"dockerControl":false,"ledControl":false,"powerMeasurement":false,"fanRPM":false,"managementInventory":true,"deviceInventory":true,"snapshotBundle":true}"#.utf8))
+        let body = try JSONEncoder().encode(DashboardSnapshot(status: Demo.status,
+            services: ServiceList(sampledAt: Demo.status.sampledAt, services: Demo.services),
+            network: Demo.network, capabilities: caps, management: Demo.management, inventory: Demo.inventory))
+        SnapshotProtocol.prepare(body)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SnapshotProtocol.self]
+        let credentials = ConnectionCredentials(baseURL: "https://board.example.com", apiToken: String(repeating: "v", count: 40), accessClientID: "", accessClientSecret: "")
+        let client = try APIClient(credentials, configuration: config)
+        let store = BoardStore(testClient: client)
+        async let poll: Void = store.refresh()
+        async let pull: Void = store.refresh(manual: true)
+        _ = await (poll, pull)
+        XCTAssertEqual(SnapshotProtocol.requestCount, 1)
+        XCTAssertEqual(store.status?.hostname, Demo.status.hostname)
+        XCTAssertEqual(store.management?.leds.count, 2)
+        XCTAssertFalse(store.refreshing)
+        XCTAssertFalse(store.userRefreshing)
+        XCTAssertNil(store.error)
+    }
     func testLEDReadbackIsAuthoritativeAndProtectsAgainstOldSamples() throws {
         let readback = LEDReadback(id: "demo:blue", mode: "off", sampledAt: "2026-10-27T00:00:06.123Z")
         XCTAssertTrue(readback.valid)
@@ -171,4 +192,26 @@ final class CubieTests: XCTestCase {
         XCTAssertEqual(store.servicesSampledAt, Demo.status.sampledAt)
         XCTAssertEqual(Demo.status.memoryTotalBytes, Demo.inventory.board.memoryBytes)
     }
+}
+
+private final class SnapshotProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var body = Data()
+    private static var count = 0
+    static var requestCount: Int { lock.lock(); defer { lock.unlock() }; return count }
+    static func prepare(_ value: Data) { lock.lock(); defer { lock.unlock() }; body = value; count = 0 }
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "board.example.com" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lock.lock(); Self.count += 1; let data = Self.body; Self.lock.unlock()
+        guard request.url?.path == "/v1/snapshot", request.httpMethod == "GET" else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL)); return
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

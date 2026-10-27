@@ -23,7 +23,7 @@ enum ConnectionError: LocalizedError {
             case "control_unavailable": return "受限控制组件暂不可用。请勿连续重试。"
             case "admin_required": return "当前凭据只有查看权限。"
             case "request_already_seen": return "该请求已经提交，请先刷新服务状态。"
-            case "control_cooldown": return "操作过于频繁，请稍等 10 秒。"
+            case "control_cooldown": return "操作过于频繁，请稍候再试；服务启停需间隔 10 秒。"
             case "journal_unavailable": return "设备尚未授予服务事件读取权限。"
             default: return "设备拒绝了本次请求。"
             }
@@ -45,6 +45,7 @@ final class APIClient {
     private let credentials: ConnectionCredentials
     private let baseURL: URL
     private let session: URLSession
+    private let controlSession: URLSession
 
     static func normalizedURL(_ value: String) throws -> URL {
         guard let parts = URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -58,7 +59,7 @@ final class APIClient {
         return url
     }
 
-    init(_ credentials: ConnectionCredentials) throws {
+    init(_ credentials: ConnectionCredentials, configuration supplied: URLSessionConfiguration = .ephemeral) throws {
         baseURL = try Self.normalizedURL(credentials.baseURL)
         guard credentials.apiToken.count >= 32,
               credentials.apiToken.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
@@ -70,7 +71,7 @@ final class APIClient {
             throw ConnectionError.accessPair
         }
         self.credentials = credentials
-        let configuration = URLSessionConfiguration.ephemeral
+        let configuration = supplied.copy() as! URLSessionConfiguration
         configuration.timeoutIntervalForRequest = 12
         configuration.timeoutIntervalForResource = 18
         configuration.urlCache = nil
@@ -78,9 +79,13 @@ final class APIClient {
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
+        // Mutation requests must not queue behind periodic telemetry transfers.
+        let controlConfiguration = configuration.copy() as! URLSessionConfiguration
+        controlConfiguration.httpMaximumConnectionsPerHost = 2
+        controlSession = URLSession(configuration: controlConfiguration, delegate: NoRedirectDelegate(), delegateQueue: nil)
     }
 
-    deinit { session.invalidateAndCancel() }
+    deinit { session.invalidateAndCancel(); controlSession.invalidateAndCancel() }
 
     func get<T: Decodable>(_ path: String) async throws -> T {
         try await request(path, body: nil)
@@ -105,7 +110,8 @@ final class APIClient {
             request.setValue(UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
         }
         // No application-level retries, especially for POST with an uncertain outcome.
-        let (data, response) = try await session.data(for: request)
+        let transport = body == nil ? session : controlSession
+        let (data, response) = try await transport.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw ConnectionError.unexpectedResponse }
         guard response.statusCode == 200 else {
             if let problem = try? JSONDecoder().decode(APIProblem.self, from: data), response.statusCode != 401 {

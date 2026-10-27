@@ -95,7 +95,7 @@ struct ServiceDetailView: View {
                 }
                 if !store.demo {
                     Button {
-                        Task { await store.refresh() }
+                        Task { await store.refresh(manual: true) }
                     } label: {
                         Label(store.refreshing ? "正在刷新…" : "刷新状态", systemImage: "arrow.clockwise")
                             .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity).padding(.vertical, 8)

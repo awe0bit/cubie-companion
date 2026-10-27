@@ -31,4 +31,7 @@ test('embedded pages do not create a second tab bar or auto-adjust native safe a
   assert.ok(source.includes('contentInsetAdjustmentBehavior="never"'));
   assert.ok(source.includes('automaticallyAdjustContentInsets={false}'));
   assert.ok(!source.includes('tabBar'));
+  assert.ok(source.includes('refreshing={pulling}'));
+  assert.ok(!source.includes('refreshing={snapshot.refreshing}'));
+  assert.ok(source.includes('defaultValue="" onChangeText={setQuery}'));
 });

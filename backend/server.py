@@ -284,9 +284,10 @@ def control(payload):
 
 
 class App:
-    def __init__(self, config, collector=None, controller=control, ledger=None, pairing=None):
+    def __init__(self, config, collector=None, controller=control, ledger=None, pairing=None, observer=None):
         self.config, self.collector, self.controller = config, collector or Collector(), controller
         self.pairing = pairing
+        self.observer = observer
         for key in ("viewerTokenSHA256", "adminTokenSHA256"):
             if not re.fullmatch(r"[0-9a-f]{64}", config.get(key, "")):
                 raise ValueError("invalid_auth_configuration")
@@ -329,12 +330,44 @@ class App:
                 return role
         raise APIError(401, "unauthorized")
 
+    def capabilities(self, role, managed):
+        return {"apiVersion": 1, "role": role, "snapshotBundle": True,
+                "serviceControl": self.config.get("serviceControl") is True and role == "admin" and managed.get('serviceControl', True),
+                "deviceReboot": self.config.get("deviceReboot") is True and role == "admin",
+                "rawLogs": False,
+                "dockerControl": self.config.get('dockerControl') is True and role == 'admin' and managed.get('dockerControl') is True,
+                "ledControl": self.config.get('ledControl') is True and role == 'admin' and managed.get('ledControl') is True,
+                "managementInventory": True, "powerMeasurement": False, "fanRPM": False, "deviceInventory": True}
+
+    @staticmethod
+    def readonly_management(result, role):
+        if role == 'admin': return result
+        return dict(result, leds=[dict(x, controllable=False) for x in result['leds']],
+                    containers=[dict(x, controllable=False) for x in result['containers']])
+
+    def bundled_snapshot(self, role):
+        # One authenticated tunnel roundtrip instead of six competing requests.
+        # Optional inventories cannot hold basic telemetry hostage when unavailable.
+        result = {'status': self.collector.snapshot(), 'services': self.collector.services(),
+                  'network': self.collector.network(), 'management': None, 'inventory': None}
+        try:
+            managed = self.management()
+            result['management'] = self.readonly_management(managed, role)
+        except (APIError, AttributeError):
+            managed = {'serviceControl': False}
+        result['capabilities'] = self.capabilities(role, managed)
+        try: result['inventory'] = self.collector.devices()
+        except (APIError, AttributeError): pass
+        return result
+
     def dispatch(self, env):
         role = self.role(env)
         method, path = env.get("REQUEST_METHOD"), env.get("PATH_INFO", "")
         if env.get("QUERY_STRING"):
             raise APIError(400, "query_not_supported")
         if method == "GET":
+            if path == '/v1/snapshot':
+                return self.bundled_snapshot(role)
             if path == "/v1/status":
                 return self.collector.snapshot()
             if path == "/v1/services":
@@ -345,21 +378,11 @@ class App:
                 return self.collector.devices()
             if path == '/v1/management':
                 result = self.management()
-                if role != 'admin':
-                    result = dict(result, leds=[dict(x, controllable=False) for x in result['leds']],
-                                  containers=[dict(x, controllable=False) for x in result['containers']])
-                return result
+                return self.readonly_management(result, role)
             if path == "/v1/capabilities":
                 try: managed = self.collector.management()
                 except (APIError, AttributeError): managed = {}
-                return {"apiVersion": 1, "role": role,
-                        "serviceControl": self.config.get("serviceControl", False) is True and role == "admin" and managed.get('serviceControl', True),
-                        "deviceReboot": self.config.get("deviceReboot", False) is True and role == "admin",
-                        "rawLogs": False,
-                        "dockerControl": self.config.get('dockerControl') is True and role == 'admin' and managed.get('dockerControl') is True,
-                        "ledControl": self.config.get('ledControl') is True and role == 'admin' and managed.get('ledControl') is True,
-                        "managementInventory": True,
-                        "powerMeasurement": False, "fanRPM": False, "deviceInventory": True}
+                return self.capabilities(role, managed)
             match = re.fullmatch(r"/v1/services/([a-z-]+)/logs", path)
             if match:
                 return self.collector.logs(match[1])
@@ -427,6 +450,7 @@ class App:
         raise APIError(404 if method in {"GET", "POST"} else 405, "not_found")
 
     def __call__(self, env, start_response):
+        started = time.monotonic()
         path = env.get("PATH_INFO", "")
         if self.pairing and (path in {"/pair", "/pair.js", "/pair.css", "/pairing/offer", "/pairing/decision"}
                              or path in {"/v1/pairing/request", "/v1/pairing/result"}):
@@ -446,6 +470,16 @@ class App:
         headers = [("Content-Type", "application/json; charset=utf-8"),
                    ("Content-Length", str(len(body))), ("Cache-Control", "no-store"),
                    ("X-Content-Type-Options", "nosniff")]
+        if self.observer:
+            # Fixed route categories only: no raw URL, headers, credentials, body or IP.
+            route = path[4:] if path in {'/v1/snapshot', '/v1/status', '/v1/services', '/v1/network',
+                                       '/v1/capabilities', '/v1/management', '/v1/devices'} else 'other'
+            if re.fullmatch(r'/v1/leds/[A-Za-z0-9:_-]{1,80}/actions', path): route = 'led.action'
+            if re.fullmatch(r'/v1/containers/[a-f0-9]{64}/actions', path): route = 'container.action'
+            event = {'event': 'api_timing', 'route': route, 'status': code,
+                     'duration_ms': round((time.monotonic() - started) * 1000)}
+            try: self.observer(event)
+            except Exception: pass  # Diagnostics cannot turn a completed mutation into a failure.
         if code == 401:
             headers.append(("WWW-Authenticate", "Bearer"))
         start_response(str(code) + " " + labels[code], headers)

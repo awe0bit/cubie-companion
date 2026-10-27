@@ -2,6 +2,10 @@
 
 ## 0.7.1 — OTA commissioning
 
+- Manual pull-to-refresh has one acknowledged spinner; background polling stays
+  silent and duplicate pulls join the current refresh. One snapshot request replaces
+  six tunnel requests, and LED writes use a separate transport without a full-page wait.
+- Native search text is no longer overwritten by delayed controlled-input renders.
 - LED operations use a per-light 200 ms debounce, separate from the unchanged 10 s
   service/Docker/reboot cooldown. Confirmed sysfs readback updates the UI immediately
   and cannot be overwritten by the previous host sample.

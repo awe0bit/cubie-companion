@@ -52,7 +52,7 @@ class AuthTests(unittest.TestCase):
     def setUp(self): self.app = App(config(), FakeCollector())
 
     def test_all_get_routes_require_auth(self):
-        for path in ["/v1/status", "/v1/services", "/v1/network", "/v1/devices", "/v1/capabilities", "/v1/services/panel/logs"]:
+        for path in ["/v1/snapshot", "/v1/status", "/v1/services", "/v1/network", "/v1/devices", "/v1/capabilities", "/v1/services/panel/logs"]:
             self.assertEqual(call(self.app, path, token=None)["code"], 401)
 
     def test_bad_and_oversized_tokens(self):
@@ -64,6 +64,15 @@ class AuthTests(unittest.TestCase):
     def test_documentation_not_public(self): self.assertEqual(call(self.app, "/docs")["code"], 404)
     def test_unsupported_method(self): self.assertEqual(call(self.app, method="DELETE")["code"], 405)
     def test_cache_disabled(self): self.assertEqual(call(self.app)["headers"]["Cache-Control"], "no-store")
+
+    def test_timing_observer_never_exports_private_request_data(self):
+        events = []; self.app.observer = events.append
+        call(self.app, '/private-account', token='private-token', QUERY_STRING='secret=private')
+        self.assertEqual(set(events[0]), {'event', 'route', 'status', 'duration_ms'})
+        self.assertEqual(events[0]['route'], 'other')
+        self.assertNotIn('private', json.dumps(events))
+        self.app.observer = lambda _: (_ for _ in ()).throw(ValueError('observer failure'))
+        self.assertEqual(call(self.app)['code'], 200)
 
     def test_roles_distinct(self):
         cfg = config(); cfg["adminTokenSHA256"] = cfg["viewerTokenSHA256"]

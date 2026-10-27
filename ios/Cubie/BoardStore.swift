@@ -18,12 +18,22 @@ final class BoardStore: ObservableObject {
     @Published private(set) var inventoryLastContact: Date?
     @Published private(set) var lastContact: Date?
     @Published private(set) var refreshing = false
+    @Published private(set) var userRefreshing = false
     @Published private(set) var operating = false
     @Published var error: String?
     @Published var notice: String?
     private var client: APIClient?
     private var generation = 0
+    private var refreshTask: Task<Void, Never>?
+    private var bundleUnsupported = false
     private var ledReadbacks: [String: (value: LEDReadback, received: Date)] = [:]
+
+    #if DEBUG
+    init(testClient: APIClient) {
+        client = testClient
+        demo = false
+    }
+    #endif
 
     init() {
         if LaunchMode.isUITesting {
@@ -52,6 +62,11 @@ final class BoardStore: ObservableObject {
 
     func showDemo() {
         generation += 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshing = false
+        userRefreshing = false
+        bundleUnsupported = false
         ledReadbacks.removeAll()
         demo = true
         client = nil
@@ -83,6 +98,11 @@ final class BoardStore: ObservableObject {
         // Do not overwrite a working stored connection until authentication succeeds.
         try Keychain.save(bound)
         generation += 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshing = false
+        userRefreshing = false
+        bundleUnsupported = false
         ledReadbacks.removeAll()
         client = candidate
         endpoint = bound.baseURL
@@ -109,30 +129,57 @@ final class BoardStore: ObservableObject {
         showDemo()
     }
 
-    func refresh() async {
+    func refresh(manual: Bool = false) async {
+        guard !demo else { return }
+        let revision = generation
+        if manual { userRefreshing = true }
+        defer { if manual && revision == generation { userRefreshing = false } }
+        // Pull-to-refresh joins an in-flight poll instead of returning without doing anything.
+        if let refreshTask { await refreshTask.value; return }
+        let task = Task { await self.performRefresh() }
+        refreshTask = task
+        await task.value
+        if revision == generation { refreshTask = nil }
+    }
+
+    private func loadSnapshot(_ client: APIClient) async throws -> DashboardSnapshot {
+        if !bundleUnsupported {
+            do { return try await client.get("snapshot") }
+            catch ConnectionError.http(404) { bundleUnsupported = true }
+        }
+        // Compatibility only: current servers supply one bounded snapshot request.
+        async let snapshot: BoardStatus = client.get("status")
+        async let list: ServiceList = client.get("services")
+        async let net: NetworkStatus = client.get("network")
+        async let caps: Capabilities = client.get("capabilities")
+        let (value, services, network, capabilities) = try await (snapshot, list, net, caps)
+        var management: ManagementStatus?
+        var inventory: DeviceInventory?
+        if capabilities.managementInventory == true { management = try? await client.get("management") }
+        if capabilities.deviceInventory == true { inventory = try? await client.get("devices") }
+        return DashboardSnapshot(status: value, services: services, network: network,
+                                 capabilities: capabilities, management: management, inventory: inventory)
+    }
+
+    private func performRefresh() async {
         guard !demo, !refreshing, let client else { return }
         refreshing = true
         let revision = generation
-        defer { refreshing = false }
+        defer { if revision == generation { refreshing = false } }
         do {
-            async let snapshot: BoardStatus = client.get("status")
-            async let list: ServiceList = client.get("services")
-            async let net: NetworkStatus = client.get("network")
-            async let caps: Capabilities = client.get("capabilities")
-            let (newStatus, newServices, newNetwork, newCapabilities) = try await (snapshot, list, net, caps)
+            let bundle = try await loadSnapshot(client)
             guard revision == generation, !Task.isCancelled else { return }
+            let newCapabilities = bundle.capabilities
             guard newCapabilities.apiVersion == 1 else { throw ConnectionError.incompatibleAPI }
-            status = newStatus
-            services = newServices.services
-            servicesSampledAt = newServices.sampledAt
-            network = newNetwork
+            status = bundle.status
+            services = bundle.services.services
+            servicesSampledAt = bundle.services.sampledAt
+            network = bundle.network
             capabilities = newCapabilities
             lastContact = Date()
             error = nil
             if newCapabilities.managementInventory == true {
-                do {
-                    let value: ManagementStatus = try await client.get("management")
-                    guard revision == generation, !Task.isCancelled else { return }
+                if let value = bundle.management {
                     // The host samples every five seconds. Never replace a confirmed
                     // hardware readback with an older sample that was already in flight.
                     ledReadbacks = ledReadbacks.filter {
@@ -141,8 +188,7 @@ final class BoardStore: ObservableObject {
                     management = value.applying(ledReadbacks.values.map { $0.value })
                     managementLastContact = Date()
                     managementError = value.dockerAvailable ? nil : "Docker 暂不可用，列表未代表全部服务。"
-                } catch {
-                    guard revision == generation, !Task.isCancelled else { return }
+                } else {
                     managementLastContact = nil
                     managementError = "控制信息暂不可用，操作已暂停。"
                 }
@@ -152,14 +198,11 @@ final class BoardStore: ObservableObject {
                 managementError = "请升级主板服务端以识别 Docker 与指示灯。"
             }
             if newCapabilities.deviceInventory == true {
-                do {
-                    let devices: DeviceInventory = try await client.get("devices")
-                    guard revision == generation, !Task.isCancelled else { return }
+                if let devices = bundle.inventory {
                     inventory = devices
                     inventoryLastContact = Date()
                     inventoryError = nil
-                } catch {
-                    guard revision == generation, !Task.isCancelled else { return }
+                } else {
                     inventoryError = "未能更新硬件信息，保留上次识别结果。"
                 }
             } else {
@@ -169,7 +212,7 @@ final class BoardStore: ObservableObject {
             }
         } catch {
             guard revision == generation, !Task.isCancelled else { return }
-            self.error = "未能刷新，下面保留上次数据。\(error.localizedDescription)"
+            self.error = error is URLError ? "连接暂未完成，保留上次数据。请稍后下拉重试。" : "未能刷新，保留上次数据。\(error.localizedDescription)"
         }
     }
 
@@ -240,6 +283,7 @@ final class BoardStore: ObservableObject {
             guard revision == generation else { return }
             notice = "操作结果未确认，请刷新后检查，不要连续重试。\(error.localizedDescription)"
         }
+        if ledID != nil { return }
         await refresh()
     }
 

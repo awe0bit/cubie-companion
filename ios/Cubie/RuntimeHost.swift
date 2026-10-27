@@ -54,7 +54,8 @@ final class RuntimeBridge: ObservableObject {
 
     static func snapshot(_ store: BoardStore) -> [String: Any] {
         var result: [String: Any] = [
-            "demo": store.demo, "stale": store.stale, "refreshing": store.refreshing,
+            "demo": store.demo, "stale": store.stale, "refreshing": store.userRefreshing,
+            "refreshAcknowledgement": true,
             "inventoryStale": store.inventoryStale,
             "services": store.services.map { ["id": $0.id, "name": $0.name, "unit": $0.unit, "state": $0.state, "stateText": $0.stateText] },
         ]
@@ -117,7 +118,10 @@ final class RuntimeBridge: ObservableObject {
         }
         guard let store else { return }
         switch action {
-        case "refresh": await store.refresh()
+        case "refresh":
+            await store.refresh(manual: true)
+            emit() // Also acknowledge no-op demo refreshes and coalesced requests.
+            BrownfieldMessaging.sendMessage(["type": "corenest.refresh", "client": client])
         case "open.binding", "open.network", "open.about", "open.controls": break
         case "open.container":
             guard let id = message["id"] as? String, store.management?.containers.contains(where: { $0.id == id }) == true else { return }

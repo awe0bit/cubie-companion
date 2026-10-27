@@ -92,6 +92,16 @@ struct Capabilities: Codable {
     let fanRPM: Bool
     let deviceInventory: Bool?
     let managementInventory: Bool?
+    let snapshotBundle: Bool?
+}
+
+struct DashboardSnapshot: Codable {
+    let status: BoardStatus
+    let services: ServiceList
+    let network: NetworkStatus
+    let capabilities: Capabilities
+    let management: ManagementStatus?
+    let inventory: DeviceInventory?
 }
 
 struct ManagementStatus: Codable {

@@ -17,6 +17,7 @@ def build_server(config_path, state_path, port, host="127.0.0.1", pairing_path=N
     app = App(json.loads(Path(config_path).read_text(encoding="utf-8")),
               ledger=ActionLedger(str(state_path)),
               pairing=PairingStore(pairing_path) if pairing_path else None,
+              observer=(lambda event: print(json.dumps(event), flush=True)) if os.environ.get('CORENEST_TRACE_REQUESTS') == '1' else None,
               collector=FileCollector(telemetry) if telemetry else None)
     server = create_server(app, host=host, port=port, threads=4,
         connection_limit=16, backlog=32, channel_timeout=15, asyncore_loop_timeout=0.1,

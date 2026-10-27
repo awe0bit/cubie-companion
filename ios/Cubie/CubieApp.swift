@@ -75,8 +75,8 @@ struct RootView: View {
         .task(id: scenePhase) {
             guard scenePhase == .active, !LaunchMode.isUITesting else { return }
             while !Task.isCancelled {
-                await store.refresh()
-                do { try await Task.sleep(nanoseconds: 5_000_000_000) }
+                if !store.operating { await store.refresh() }
+                do { try await Task.sleep(nanoseconds: 10_000_000_000) }
                 catch { break }
             }
         }
