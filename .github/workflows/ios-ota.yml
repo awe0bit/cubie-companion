@@ -2,6 +2,9 @@ name: CoreNest iOS OTA
 
 on:
   workflow_call:
+    secrets:
+      EXPO_TOKEN:
+        required: true
     inputs:
       channel:
         type: string

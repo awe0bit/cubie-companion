@@ -314,7 +314,8 @@ jobs:
     with:
       channel: production
       source_ref: ${{ github.sha }}
-    secrets: inherit
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
   release:
     name: Publish verified iOS release

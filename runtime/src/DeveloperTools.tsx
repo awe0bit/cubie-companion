@@ -54,6 +54,7 @@ export function DeveloperTools({ snapshot, dark, bottomInset, disableRemote, ref
       {row('数据连接', snapshot.demo ? '演示模式' : snapshot.stale ? '连接中断' : snapshot.live ? '实时推送' : '正在重连')}
       {row('系统服务', String(snapshot.services.length))}{row('Docker 容器', String(snapshot.management?.containers.length ?? 0))}
       {row('已识别硬件', String(snapshot.inventory?.devices.length ?? 0))}
+      {snapshot.status?.sampledAt && row('最近采样', new Date(snapshot.status.sampledAt).toLocaleTimeString('zh-CN'))}
       {!snapshot.demo && button(refreshing ? '刷新中…' : '刷新设备状态', 'developer-refresh', onRefresh, refreshing)}
       {!!snapshot.error && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.error}</Text>}
     </>)}
