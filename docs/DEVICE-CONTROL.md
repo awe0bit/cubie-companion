@@ -7,7 +7,11 @@ to container environment variables. No Docker socket is mounted into the API.
 The host broker runs through `corenest-control.socket`, checks Unix peer UIDs and a
 root-owned allowlist, and accepts fixed JSON operations only. The HTTP API additionally
 requires an administrator device binding, an explicit feature flag, a unique
-idempotency key and a ten-second cooldown. Every UI mutation is confirmed in native
+idempotency key and a ten-second cooldown for service, Docker and reboot operations.
+LED changes have a separate 200 ms debounce per light, followed by actual sysfs
+readback. The API and app retain that confirmed mode over older five-second host
+samples for at most eight seconds. No requested mode is presented as confirmed
+before hardware readback succeeds. Every UI mutation is confirmed in native
 SwiftUI. An uncertain result is never automatically retried.
 
 ## Operator opt-in
