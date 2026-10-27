@@ -30,7 +30,7 @@ def main():
     if os.environ.get("LISTEN_PID") != str(os.getpid()) or os.environ.get("LISTEN_FDS") != "1":
         raise SystemExit("systemd_socket_required")
     listener = socket.fromfd(3, socket.AF_UNIX, socket.SOCK_STREAM)
-    last_action = -100.0
+    last_actions = {}
     while True:
         client, _ = listener.accept()
         with client:
@@ -55,22 +55,26 @@ def main():
                     continue
                 if uid != config.get('apiUID'):
                     raise ValueError('read_only_peer')
+                from management import cooldown_bucket, action_receipt
+                bucket, cooldown = cooldown_bucket(payload)
+                if bucket.startswith('led:') and payload['led'] not in config.get('leds', {}):
+                    raise ValueError('led_protected')
                 now = time.monotonic()
-                if now - last_action < 10:
+                if now - last_actions.get(bucket, -100.0) < cooldown:
                     raise ValueError("cooldown")
-                last_action = now
+                last_actions[bucket] = now
                 if isinstance(payload, dict) and ('led' in payload or 'container' in payload):
                     from management import execute
-                    accepted = execute(payload, config)['accepted']
+                    response = action_receipt(execute(payload, config), payload)
                 else:
                     command = resolve(payload, config)
                     result = subprocess.run(command, capture_output=True, timeout=5,
                                             env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
-                    accepted = result.returncode == 0
+                    response = {'accepted': result.returncode == 0}
             except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
-                accepted = False
+                response = {'accepted': False}
             try:
-                client.sendall(json.dumps({"accepted": accepted}).encode() + b"\n")
+                client.sendall(json.dumps(response).encode() + b"\n")
             except OSError:
                 pass
 

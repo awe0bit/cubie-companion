@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform", default="amd64")
     args = parser.parse_args()
-    image, name = "corenest-server:0.7.0", "corenest-ci-" + secrets.token_hex(6)
+    image, name = "corenest-server:0.7.1", "corenest-ci-" + secrets.token_hex(6)
     with tempfile.TemporaryDirectory() as folder:
         telemetry = Path(folder)
         telemetry.chmod(0o755)

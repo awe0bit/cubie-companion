@@ -2,6 +2,9 @@
 
 ## 0.7.1 — OTA commissioning
 
+- LED operations use a per-light 200 ms debounce, separate from the unchanged 10 s
+  service/Docker/reboot cooldown. Confirmed sysfs readback updates the UI immediately
+  and cannot be overwritten by the previous host sample.
 - Independent OTA project is supplied through repository configuration, not source.
 - About displays embedded/OTA launch source, update ID and emergency recovery state.
 - Publish with an explicit SDK 57 environment and suppress account-bearing CLI logs.

@@ -23,6 +23,7 @@ final class BoardStore: ObservableObject {
     @Published var notice: String?
     private var client: APIClient?
     private var generation = 0
+    private var ledReadbacks: [String: (value: LEDReadback, received: Date)] = [:]
 
     init() {
         if LaunchMode.isUITesting {
@@ -51,6 +52,7 @@ final class BoardStore: ObservableObject {
 
     func showDemo() {
         generation += 1
+        ledReadbacks.removeAll()
         demo = true
         client = nil
         endpoint = ""
@@ -81,6 +83,7 @@ final class BoardStore: ObservableObject {
         // Do not overwrite a working stored connection until authentication succeeds.
         try Keychain.save(bound)
         generation += 1
+        ledReadbacks.removeAll()
         client = candidate
         endpoint = bound.baseURL
         capabilities = caps
@@ -130,7 +133,12 @@ final class BoardStore: ObservableObject {
                 do {
                     let value: ManagementStatus = try await client.get("management")
                     guard revision == generation, !Task.isCancelled else { return }
-                    management = value
+                    // The host samples every five seconds. Never replace a confirmed
+                    // hardware readback with an older sample that was already in flight.
+                    ledReadbacks = ledReadbacks.filter {
+                        Date().timeIntervalSince($0.value.received) < 8 && $0.value.value.isNewer(than: value.sampledAt)
+                    }
+                    management = value.applying(ledReadbacks.values.map { $0.value })
                     managementLastContact = Date()
                     managementError = value.dockerAvailable ? nil : "Docker 暂不可用，列表未代表全部服务。"
                 } catch {
@@ -201,7 +209,7 @@ final class BoardStore: ObservableObject {
               management?.leds.contains(where: { $0.id == led.id }) == true,
               led.id.range(of: "^[A-Za-z0-9:_-]{1,80}$", options: .regularExpression) != nil,
               ["on", "off", "system"].contains(mode) else { return }
-        await manage("leds/\(led.id)/actions", body: ["mode": mode])
+        await manage("leds/\(led.id)/actions", body: ["mode": mode], ledID: led.id)
     }
 
     func act(container: BoardContainer, action: String) async {
@@ -212,7 +220,7 @@ final class BoardStore: ObservableObject {
         await manage("containers/\(container.id)/actions", body: ["action": action])
     }
 
-    private func manage(_ path: String, body: [String: String]) async {
+    private func manage(_ path: String, body: [String: String], ledID: String? = nil) async {
         guard let client else { return }
         operating = true
         let revision = generation
@@ -220,6 +228,13 @@ final class BoardStore: ObservableObject {
         do {
             let result: Accepted = try await client.post(path, body: body)
             guard revision == generation else { return }
+            if result.accepted, let ledID, let readback = result.led,
+               readback.id == ledID, readback.valid {
+                ledReadbacks[ledID] = (readback, Date())
+                management = management?.applying([readback])
+                notice = "指示灯状态已确认。"
+                return
+            }
             notice = result.accepted ? "操作已执行，正在刷新实际状态。" : "操作未执行，请检查权限。"
         } catch {
             guard revision == generation else { return }

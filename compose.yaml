@@ -1,7 +1,7 @@
 name: corenest
 services:
   server:
-    image: corenest-server:0.7.0
+    image: corenest-server:0.7.1
     build: .
     restart: unless-stopped
     init: true

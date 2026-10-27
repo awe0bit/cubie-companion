@@ -3,6 +3,20 @@ import UIKit
 @testable import Cubie
 
 final class CubieTests: XCTestCase {
+    func testLEDReadbackIsAuthoritativeAndProtectsAgainstOldSamples() throws {
+        let readback = LEDReadback(id: "demo:blue", mode: "off", sampledAt: "2026-10-27T00:00:06.123Z")
+        XCTAssertTrue(readback.valid)
+        XCTAssertTrue(readback.isNewer(than: "2026-10-27T00:00:05Z"))
+        XCTAssertFalse(readback.isNewer(than: "2026-10-27T00:00:07Z"))
+        let result = Demo.management.applying([readback])
+        XCTAssertEqual(result.leds.first?.mode, "off")
+        XCTAssertEqual(result.leds.last?.mode, Demo.management.leds.last?.mode)
+        XCTAssertEqual(result.containers.count, Demo.management.containers.count)
+        XCTAssertEqual(result.leds.first?.controllable, false)
+        XCTAssertFalse(LEDReadback(id: "x", mode: "unknown", sampledAt: readback.sampledAt).valid)
+        let old = try JSONDecoder().decode(Accepted.self, from: Data(#"{"accepted":true}"#.utf8))
+        XCTAssertNil(old.led)
+    }
     func testPairingOfferStrictValidation() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let ticket = String(repeating: "a", count: 24) + "." + String(repeating: "b", count: 43)

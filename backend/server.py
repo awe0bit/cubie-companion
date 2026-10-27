@@ -39,9 +39,11 @@ class ActionLedger:
     def __init__(self, path=":memory:"):
         self.connection = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.connection.execute("CREATE TABLE IF NOT EXISTS requests (key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, timestamp REAL NOT NULL)")
+        if 'bucket' not in {row[1] for row in self.connection.execute('PRAGMA table_info(requests)')}:
+            self.connection.execute("ALTER TABLE requests ADD COLUMN bucket TEXT NOT NULL DEFAULT 'control'")
         self.lock = threading.Lock()
 
-    def reserve(self, key, fingerprint):
+    def reserve(self, key, fingerprint, bucket='control', cooldown=10):
         now = time.time()
         with self.lock:
             self.connection.execute("BEGIN IMMEDIATE")
@@ -50,10 +52,10 @@ class ActionLedger:
                 old = self.connection.execute("SELECT fingerprint FROM requests WHERE key = ?", (key,)).fetchone()
                 if old:
                     raise APIError(409, "request_already_seen" if old[0] == fingerprint else "idempotency_conflict")
-                latest = self.connection.execute("SELECT MAX(timestamp) FROM requests").fetchone()[0]
-                if latest is not None and now - latest < 10:
+                latest = self.connection.execute("SELECT MAX(timestamp) FROM requests WHERE bucket = ?", (bucket,)).fetchone()[0]
+                if latest is not None and now - latest < cooldown:
                     raise APIError(429, "control_cooldown")
-                self.connection.execute("INSERT INTO requests VALUES (?, ?, ?)", (key, fingerprint, now))
+                self.connection.execute("INSERT INTO requests(key,fingerprint,timestamp,bucket) VALUES (?, ?, ?, ?)", (key, fingerprint, now, bucket))
                 self.connection.execute("COMMIT")
             except Exception:
                 self.connection.execute("ROLLBACK")
@@ -269,13 +271,16 @@ def control(payload):
                     break
                 data += block
             result = json.loads(data)
-            if result != {"accepted": True}:
+            from management import action_receipt
+            try:
+                receipt = action_receipt(result, payload)
+            except (ValueError, TypeError):
                 raise APIError(403, "control_not_enabled")
     except APIError:
         raise
     except (OSError, ValueError, AttributeError):
         raise APIError(503, "control_unavailable")
-    return {"accepted": True}
+    return receipt
 
 
 class App:
@@ -288,6 +293,26 @@ class App:
         if config["viewerTokenSHA256"] == config["adminTokenSHA256"]:
             raise ValueError("roles_require_distinct_tokens")
         self.ledger = ledger or ActionLedger()
+        self.led_readbacks = {}
+        self.readback_lock = threading.Lock()
+
+    def management(self):
+        result = self.collector.management()
+        # Readbacks are authoritative; the read-only host export can lag five seconds.
+        with self.readback_lock:
+            self.led_readbacks = {key: value for key, value in self.led_readbacks.items()
+                                  if time.monotonic() - value[0] < 8}
+            leds = []
+            for item in result['leds']:
+                cached = self.led_readbacks.get(item['id'])
+                if cached:
+                    try:
+                        old = datetime.fromisoformat(result['sampledAt'].replace('Z', '+00:00'))
+                        new = datetime.fromisoformat(cached[1]['sampledAt'].replace('Z', '+00:00'))
+                        if old < new: item = dict(item, mode=cached[1]['mode'])
+                    except (ValueError, KeyError, TypeError): pass
+                leds.append(item)
+        return dict(result, leds=leds)
 
     def role(self, environ):
         value = environ.get("HTTP_AUTHORIZATION", "")
@@ -319,7 +344,7 @@ class App:
             if path == "/v1/devices":
                 return self.collector.devices()
             if path == '/v1/management':
-                result = self.collector.management()
+                result = self.management()
                 if role != 'admin':
                     result = dict(result, leds=[dict(x, controllable=False) for x in result['leds']],
                                   containers=[dict(x, controllable=False) for x in result['containers']])
@@ -388,9 +413,17 @@ class App:
             if not re.fullmatch(r"[A-Za-z0-9-]{16,64}", key):
                 raise APIError(400, "idempotency_key_required")
             fingerprint = path + ":" + json.dumps(payload, sort_keys=True)
-            self.ledger.reserve(key, fingerprint)
+            from management import cooldown_bucket
+            bucket, cooldown = cooldown_bucket(payload)
+            self.ledger.reserve(key, fingerprint, bucket=bucket, cooldown=cooldown)
             # Record before dispatch. Never automatically retry an uncertain mutation.
-            return self.controller(payload)
+            result = self.controller(payload)
+            if 'led' in payload and isinstance(result, dict) and 'led' in result:
+                from management import action_receipt
+                result = action_receipt(result, payload)
+                with self.readback_lock:
+                    self.led_readbacks[payload['led']] = (time.monotonic(), result['led'])
+            return result
         raise APIError(404 if method in {"GET", "POST"} else 405, "not_found")
 
     def __call__(self, env, start_response):

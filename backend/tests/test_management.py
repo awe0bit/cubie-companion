@@ -4,15 +4,16 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from management import snapshot, execute, docker_records
+from management import snapshot, execute, docker_records, cooldown_bucket, action_receipt
 from test_server import config, call, FakeCollector, VIEWER, ADMIN
-from server import App
+from server import App, ActionLedger, APIError
 
 CID = 'a' * 64
 
 class ManagedCollector(FakeCollector):
     def management(self):
-        return {'leds': [{'id': 'board:blue', 'mode': 'system', 'controllable': True}],
+        return {'sampledAt': '2026-10-27T00:00:00+00:00',
+                'leds': [{'id': 'board:blue', 'mode': 'system', 'controllable': True}],
                 'containers': [{'id': CID, 'controllable': True}],
                 'ledControl': True, 'dockerControl': True, 'serviceControl': True}
 
@@ -36,6 +37,51 @@ class ManagementTests(unittest.TestCase):
         result = call(self.app, '/v1/leds/board:blue/actions', 'POST', ADMIN, {'mode': 'off'})
         self.assertEqual(result['code'], 200)
         self.assertEqual(self.operations, [{'led': 'board:blue', 'mode': 'off'}])
+
+    def test_led_cooldown_independent_and_dangerous_actions_still_protected(self):
+        ledger = ActionLedger()
+        with patch('server.time.time', return_value=1000):
+            ledger.reserve('control1', 'restart')
+            bucket, cooldown = cooldown_bucket({'led': 'board:blue', 'mode': 'off'})
+            ledger.reserve('blue1', 'off', bucket, cooldown)
+            with self.assertRaises(APIError): ledger.reserve('blue2', 'on', bucket, cooldown)
+            ledger.reserve('green1', 'off', 'led:board:green', .2)
+        with patch('server.time.time', return_value=1000.3):
+            ledger.reserve('blue2', 'on', bucket, cooldown)
+            with self.assertRaises(APIError): ledger.reserve('control2', 'stop')
+            with self.assertRaises(APIError): ledger.reserve('blue1', 'off', bucket, cooldown)
+        self.assertEqual(cooldown_bucket({'container': CID, 'action': 'stop'}), ('control', 10))
+        self.assertEqual(cooldown_bucket({'led': [], 'mode': 'on'}), ('control', 10))
+        ledger.connection.close()
+
+    def test_readback_boundary_sanitizes_and_rejects_mismatched_led(self):
+        payload = {'led': 'board:blue', 'mode': 'off'}
+        result = {'accepted': True, 'private': 'never export', 'led': {
+            'id': 'board:blue', 'mode': 'off', 'sampledAt': '2026-10-27T00:00:00+00:00'}}
+        self.assertNotIn('private', action_receipt(result, payload))
+        result['led']['id'] = 'board:green'
+        self.assertRaises(ValueError, action_receipt, result, payload)
+
+    def test_old_host_sample_does_not_undo_confirmed_led_readback(self):
+        self.app.controller = lambda p: {'accepted': True, 'led': {
+            'id': p['led'], 'mode': p['mode'], 'sampledAt': '2026-10-27T00:00:02+00:00'}}
+        self.assertEqual(call(self.app, '/v1/leds/board:blue/actions', 'POST', ADMIN, {'mode': 'off'})['code'], 200)
+        self.assertEqual(call(self.app, '/v1/management', token=ADMIN)['body']['leds'][0]['mode'], 'off')
+        self.assertEqual(self.app.collector.management()['leds'][0]['mode'], 'system')
+
+    def test_old_ledger_schema_migrates_without_losing_deduplication(self):
+        import sqlite3, time
+        with tempfile.TemporaryDirectory() as folder:
+            path = str(Path(folder)/'ledger.sqlite3')
+            connection = sqlite3.connect(path)
+            connection.execute('CREATE TABLE requests(key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, timestamp REAL NOT NULL)')
+            connection.execute('INSERT INTO requests VALUES(?,?,?)', ('old', 'payload', time.time()))
+            connection.commit(); connection.close()
+            ledger = ActionLedger(path)
+            with self.assertRaises(APIError) as caught: ledger.reserve('old', 'payload')
+            self.assertEqual(caught.exception.code, 'request_already_seen')
+            with self.assertRaises(APIError): ledger.reserve('new', 'payload')
+            ledger.connection.close()
 
     def test_container_fixed_payload(self):
         result = call(self.app, '/v1/containers/'+CID+'/actions', 'POST', ADMIN, {'action': 'restart'})
@@ -87,10 +133,12 @@ class ManagementTests(unittest.TestCase):
                 (folder/name).write_text(value)
             cfg = {'ledControl': True, 'leds': {'board-blue': {'name': 'Blue', 'trigger': 'heartbeat'}}}
             self.assertEqual(snapshot(cfg, root, lambda _: '')['leds'][0]['mode'], 'system')
-            execute({'led': 'board-blue', 'mode': 'off'}, cfg, root)
+            receipt = execute({'led': 'board-blue', 'mode': 'off'}, cfg, root)
+            self.assertEqual(receipt['led']['mode'], 'off')
             self.assertEqual((folder/'brightness').read_text(), '0')
             (folder/'trigger').write_text('[none] heartbeat timer')
-            execute({'led': 'board-blue', 'mode': 'system'}, cfg, root)
+            receipt = execute({'led': 'board-blue', 'mode': 'system'}, cfg, root)
+            self.assertEqual(receipt['led']['mode'], 'system')
             self.assertEqual((folder/'trigger').read_text(), 'heartbeat')
             self.assertRaises(ValueError, execute, {'led': '../../etc', 'mode': 'off'}, cfg, root)
 

@@ -44,16 +44,46 @@ def led_path(root, name):
     return path
 
 
+def led_state(path):
+    triggers = (path / 'trigger').read_text().split()
+    selected = next((x[1:-1] for x in triggers if x.startswith('[')),
+                    triggers[0] if len(triggers) == 1 else 'none')
+    brightness = int((path / 'brightness').read_text())
+    return ('on' if brightness else 'off') if selected == 'none' else 'system'
+
+
+def cooldown_bucket(payload):
+    if (isinstance(payload, dict) and set(payload) == {'led', 'mode'}
+            and isinstance(payload['led'], str)
+            and re.fullmatch('[A-Za-z0-9:_-]{1,80}', payload['led'])
+            and isinstance(payload['mode'], str) and payload['mode'] in {'on', 'off', 'system'}):
+        return 'led:' + payload['led'], 0.2
+    return 'control', 10
+
+
+def action_receipt(result, payload):
+    """Only fixed, matching readback fields may cross the privileged boundary."""
+    if not isinstance(result, dict) or result.get('accepted') is not True:
+        raise ValueError('operation_rejected')
+    receipt = {'accepted': True}
+    if 'led' in payload:
+        led = result.get('led')
+        if (not isinstance(led, dict) or set(led) != {'id', 'mode', 'sampledAt'}
+                or led['id'] != payload['led'] or led['mode'] not in ('on', 'off', 'system')
+                or not isinstance(led['sampledAt'], str) or len(led['sampledAt']) > 40):
+            raise ValueError('invalid_led_readback')
+        datetime.fromisoformat(led['sampledAt'].replace('Z', '+00:00'))
+        receipt['led'] = {key: led[key] for key in ('id', 'mode', 'sampledAt')}
+    return receipt
+
+
 def snapshot(config, sysroot='/sys/class/leds', runner=None):
     leds = []
     for name, options in config.get('leds', {}).items():
         try:
             path = led_path(sysroot, name)
-            trigger = (path / 'trigger').read_text().split()
-            selected = next((x[1:-1] for x in trigger if x.startswith('[')), 'none')
-            brightness = int((path / 'brightness').read_text())
             leds.append({'id': name, 'name': str(options.get('name', name))[:80],
-                         'mode': ('on' if brightness else 'off') if selected == 'none' else 'system',
+                         'mode': led_state(path),
                          'controllable': config.get('ledControl') is True})
         except (OSError, ValueError, TypeError): continue
     try:
@@ -88,7 +118,8 @@ def execute(payload, config, sysroot='/sys/class/leds', runner=None):
             maximum = int((path / 'max_brightness').read_text())
             (path / 'trigger').write_text('none')
             (path / 'brightness').write_text(str(maximum if mode == 'on' else 0))
-        return {'accepted': True}
+        return {'accepted': True, 'led': {'id': name, 'mode': led_state(path),
+                'sampledAt': datetime.now(timezone.utc).isoformat()}}
     if set(payload) == {'container', 'action'} and config.get('dockerControl') is True:
         ident, action = payload['container'], payload['action']
         if not isinstance(ident, str) or not re.fullmatch('[a-f0-9]{64}', ident): raise ValueError('invalid_container')

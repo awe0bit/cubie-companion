@@ -12,7 +12,8 @@ import control
 
 class BrokerTests(unittest.TestCase):
     def exchange(self, uid, payload, config=None):
-        cfg = {'apiUID': 10001, 'allowedUIDs': [10001, 996], 'ledControl': True}
+        cfg = {'apiUID': 10001, 'allowedUIDs': [10001, 996], 'ledControl': True,
+               'leds': {'board:blue': {'trigger': 'heartbeat'}}}
         if config: cfg.update(config)
         client = MagicMock()
         client.getsockopt.return_value = struct.pack('3i', 42, uid, 996)
@@ -27,7 +28,8 @@ class BrokerTests(unittest.TestCase):
                  patch.object(control.socket, 'AF_UNIX', 1, create=True), \
                  patch.object(control.socket, 'SO_PEERCRED', 17, create=True), \
                  patch('management.snapshot', return_value={'leds': [], 'containers': []}) as read, \
-                 patch('management.execute', return_value={'accepted': True}) as write:
+                 patch('management.execute', return_value={'accepted': True, 'led': {
+                     'id': 'board:blue', 'mode': 'off', 'sampledAt': '2026-10-27T00:00:00+00:00'}}) as write:
                 with self.assertRaises(StopIteration): control.main()
                 return json.loads(client.sendall.call_args.args[0]), read.call_count, write.call_count
 
@@ -45,7 +47,8 @@ class BrokerTests(unittest.TestCase):
 
     def test_api_peer_fixed_mutation_is_forwarded(self):
         response, reads, writes = self.exchange(10001, {'led':'board:blue','mode':'off'})
-        self.assertEqual(response,{'accepted':True})
+        self.assertTrue(response['accepted'])
+        self.assertEqual(response['led']['mode'], 'off')
         self.assertEqual((reads,writes),(0,1))
 
     def test_non_object_payload_is_denied(self):

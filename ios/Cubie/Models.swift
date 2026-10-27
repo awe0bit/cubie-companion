@@ -99,6 +99,24 @@ struct ManagementStatus: Codable {
     let leds: [BoardLED]
     let containers: [BoardContainer]
     let dockerAvailable: Bool
+
+    func applying(_ readbacks: [LEDReadback]) -> ManagementStatus {
+        ManagementStatus(sampledAt: sampledAt, leds: leds.map { led in
+            guard let value = readbacks.first(where: { $0.id == led.id && $0.valid }) else { return led }
+            return BoardLED(id: led.id, name: led.name, mode: value.mode, controllable: led.controllable)
+        }, containers: containers, dockerAvailable: dockerAvailable)
+    }
+}
+
+struct LEDReadback: Codable {
+    let id: String
+    let mode: String
+    let sampledAt: String
+    var valid: Bool { ["on", "off", "system"].contains(mode) && Display.date(sampledAt) != nil }
+    func isNewer(than sample: String) -> Bool {
+        guard let own = Display.date(sampledAt), let other = Display.date(sample) else { return false }
+        return valid && own > other
+    }
 }
 
 struct BoardLED: Codable, Identifiable {
@@ -203,7 +221,10 @@ struct ServiceEvent: Codable, Identifiable {
     let message: String
 }
 
-struct Accepted: Codable { let accepted: Bool }
+struct Accepted: Codable {
+    let accepted: Bool
+    let led: LEDReadback?
+}
 struct APIProblem: Codable { let error: String }
 
 struct ConnectionCredentials: Codable {
