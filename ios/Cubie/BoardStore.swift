@@ -497,20 +497,28 @@ final class BoardStore: ObservableObject {
 
 /// Only user-initiated controls receive a finite background grace period.
 @MainActor
-private final class ControlBackgroundLease {
+final class ControlBackgroundLease {
     private var identifier: UIBackgroundTaskIdentifier = .invalid
+    private var finished = false
+    private let onExpire: () -> Void
     private(set) var expired = false
     init(onExpire: @escaping () -> Void) {
+        self.onExpire = onExpire
         identifier = UIApplication.shared.beginBackgroundTask(withName: "CoreNest control") { [weak self] in
-            Task { @MainActor in
-                guard let self, self.identifier != .invalid else { return }
-                self.expired = true
-                onExpire()
-                self.finish()
-            }
+            // UIKit invokes this on the main actor. End inside the handler,
+            // not in a queued Task after the system's expiration callback returns.
+            self?.expire()
         }
     }
+    func expire() {
+        guard !finished else { return }
+        expired = true
+        onExpire()
+        finish()
+    }
     func finish() {
+        guard !finished else { return }
+        finished = true
         guard identifier != .invalid else { return }
         UIApplication.shared.endBackgroundTask(identifier)
         identifier = .invalid

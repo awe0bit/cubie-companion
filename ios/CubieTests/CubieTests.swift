@@ -3,6 +3,21 @@ import UIKit
 @testable import Cubie
 
 final class CubieTests: XCTestCase {
+    @MainActor func testBackgroundLeaseExpirationFinishesSynchronouslyAndOnlyOnce() {
+        var cancellations = 0
+        let lease = ControlBackgroundLease { cancellations += 1 }
+        lease.expire()
+        XCTAssertTrue(lease.expired)
+        XCTAssertEqual(cancellations, 1)
+        lease.finish()
+        lease.expire()
+        XCTAssertEqual(cancellations, 1)
+        let completed = ControlBackgroundLease { XCTFail("A finished operation must not expire again") }
+        completed.finish()
+        completed.expire()
+        XCTAssertFalse(completed.expired)
+    }
+
     func testConnectionPolicyUsesPowerNetworkAndThermalSignals() {
         XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: false, thermal: .nominal), 1)
         XCTAssertEqual(ConnectionPolicy.interval(overview: false, economy: false, constrained: false, thermal: .nominal), 5)
