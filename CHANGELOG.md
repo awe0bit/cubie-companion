@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1 — Hidden developer tools and OTA-first delivery
+
+- Long-press the system Settings tab for 0.65 seconds to open developer tools,
+  following Tempo's interaction without adding a second tab bar or changing tap behavior.
+- OTA-capable developer content shows real update state/progress, runtime,
+  channel, page source/ID and read-only session counts. No endpoint or token viewer.
+- Native entry requires one package update; compatibility runtime remains 0.9.0.
+- Page-only changes publish compatible OTA after checks; native changes build
+  IPA, server changes build Docker, test/doc-only changes publish neither.
+- Successful runs stop uploading redundant debug archives; failures retain diagnostics.
+
 ## 0.9.0 — Calmer trends and focused navigation
 
 - Overview replaces rapidly changing digits with CPU, temperature, memory and

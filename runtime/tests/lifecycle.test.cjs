@@ -55,3 +55,24 @@ test('disabled project never checks, healthy unchanged page never downloads', as
   assert.equal(healthy.states.at(-1).stage, 'current');
   assert.equal(healthy.downloads(), 0);
 });
+
+test('developer observer sees actual controller stages and unsubscribes cleanly', async () => {
+  const c = controller({ available: true });
+  const stages = [];
+  const unsubscribe = c.exports.observeUpdates(value => stages.push(value.stage));
+  await c.exports.checkUpdate(true);
+  assert.deepEqual(stages, ['idle', 'checking', 'downloading', 'pending']);
+  assert.equal(c.exports.updateState().stage, 'pending');
+  unsubscribe();
+  c.exports.startUpdates(true);
+  assert.equal(stages.at(-1), 'pending');
+  assert.equal(c.exports.updateState().stage, 'disabled');
+});
+
+test('preview mode cannot re-enable network checks through developer tools', async () => {
+  const c = controller();
+  c.exports.startUpdates(true);
+  await c.exports.checkUpdate(true);
+  assert.equal(c.checks(), 0);
+  assert.equal(c.exports.updateState().stage, 'disabled');
+});

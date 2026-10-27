@@ -56,6 +56,7 @@ final class RuntimeBridge: ObservableObject {
         var result: [String: Any] = [
             "demo": store.demo, "stale": store.stale, "refreshing": store.userRefreshing,
             "refreshAcknowledgement": true, "live": store.live, "telemetrySession": store.telemetrySession,
+            "app": ["version": Brand.version, "build": Brand.build],
             "inventoryStale": store.inventoryStale,
             "services": store.services.map { ["id": $0.id, "name": $0.name, "unit": $0.unit, "state": $0.state, "stateText": $0.stateText] },
         ]
@@ -93,6 +94,8 @@ final class RuntimeBridge: ObservableObject {
     func checkUpdate() {
         BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "check-update"])
     }
+
+    func retire(_ client: String) { readyClients.remove(client) }
 
     private func receive(_ message: [String: Any]) async {
         if message["type"] as? String == "corenest.ota" {
@@ -141,6 +144,8 @@ private struct RuntimeDestination: Identifiable, Hashable {
     var id: String { action + ":" + value }
 }
 
+enum RuntimeRoute: String { case overview, services, devices, developer }
+
 struct RuntimeScreen: View {
     @EnvironmentObject private var store: BoardStore
     @ObservedObject private var bridge = RuntimeBridge.shared
@@ -150,11 +155,11 @@ struct RuntimeScreen: View {
     @State private var searchQuery = ""
     @State private var serviceFilter = "全部"
     @State private var showSearch = false
-    let route: AppTab
+    let route: RuntimeRoute
     private var ready: Bool { bridge.readyClients.contains(client) }
 
     private var title: String {
-        switch route { case .overview: return Brand.chineseName; case .services: return "服务"; case .devices: return "设备"; case .settings: return "设置" }
+        switch route { case .overview: return Brand.chineseName; case .services: return "服务"; case .devices: return "设备"; case .developer: return "开发者工具" }
     }
 
     var body: some View {
@@ -260,6 +265,7 @@ struct RuntimeScreen: View {
             }
         }
         .onAppear { RuntimeBridge.shared.connect(store) }
+        .onDisappear { if route == .developer { bridge.retire(client) } }
         .onReceive(NotificationCenter.default.publisher(for: .runtimeAction)) { event in
             guard let message = event.userInfo, message["client"] as? String == client,
                   let action = message["action"] as? String else { return }
@@ -284,7 +290,7 @@ struct RuntimeScreen: View {
         case .overview: OverviewView()
         case .services: ServicesView()
         case .devices: DevicesView()
-        case .settings: AppSettingsView()
+        case .developer: AboutView()
         }
     }
 }

@@ -59,6 +59,26 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertFalse(app.buttons["device-reboot"].exists)
     }
 
+    func testSettingsLongPressRevealsDeveloperWithoutChangingNormalTabs() {
+        let app = launch()
+        explore(app)
+        app.tabBars.buttons["设置"].tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["developer-title"].exists)
+        app.tabBars.buttons["概览"].press(forDuration: 0.8)
+        XCTAssertFalse(app.staticTexts["developer-title"].exists, "Other tabs must not reveal developer tools")
+        app.tabBars.buttons["设置"].press(forDuration: 0.8)
+        XCTAssertTrue(app.descendants(matching: .any)["runtime-developer"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["developer-title"].exists)
+        XCTAssertTrue(app.staticTexts["developer-ota-status"].exists)
+        XCTAssertFalse(app.buttons["developer-check-ota"].exists, "Simulator preview must not contact OTA services")
+        snapshot("developer-tools-light")
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.tabBars.count, 1)
+        XCTAssertEqual(app.tabBars.firstMatch.buttons.count, 4)
+    }
+
     func testBindingContainsOnlyQRConfiguration() {
         let app = launch()
         XCTAssertTrue(app.buttons["welcome-connect"].waitForExistence(timeout: 10))

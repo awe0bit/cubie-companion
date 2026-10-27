@@ -44,7 +44,12 @@ def main():
          '-UIPreferredContentSizeCategoryName','UICTContentSizeCategoryAccessibilityXXXL')
     time.sleep(10)
     call('io',args.device,'screenshot',str(args.output/'settings-accessibility.png'))
-    print('Captured 13 real simulator screenshots; all displayed data are demo fixtures.')
+    for appearance in ['light','dark']:
+        call('terminate',args.device,BUNDLE,check=False)
+        call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','settings','--preview-detail','developer','--preview-appearance',appearance)
+        time.sleep(10)
+        call('io',args.device,'screenshot',str(args.output/('developer-'+appearance+'.png')))
+    print('Captured 15 real simulator screenshots; all displayed data are demo fixtures.')
 
 
 if __name__=='__main__':main()

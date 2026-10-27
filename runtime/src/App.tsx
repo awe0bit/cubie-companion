@@ -4,6 +4,7 @@ import { send, subscribe } from './native';
 import { startUpdates } from './updates';
 import { ManualRefresh } from './refresh';
 import { TrendCard } from './TrendCard';
+import { DeveloperTools } from './DeveloperTools';
 import { telemetry } from './telemetry';
 import { layout, palette } from './theme';
 import { bytes, groupedServices, stateText } from './presentation';
@@ -73,6 +74,8 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const containers = managed?.containers ?? [];
   const groups = groupedServices(snapshot.services, containers, query, filter);
   const running = snapshot.services.filter(s => s.state === 'active').length + containers.filter(c => c.state === 'running').length;
+  if (route === 'developer') return <DeveloperTools snapshot={snapshot} dark={dark} bottomInset={bottomInset}
+    disableRemote={disableRemoteUpdates} refreshing={pulling} onRefresh={() => manualRefresh.current?.start(snapshot.demo)} />;
   return <ScrollView testID={`runtime-${route}`} style={{ flex: 1, backgroundColor: colors.background }}
     contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets

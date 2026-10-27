@@ -23,12 +23,22 @@ jobs:
     name: Privacy gate
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+      server: ${{ steps.scope.outputs.server }}
+      runtime: ${{ steps.scope.outputs.runtime }}
+      ota: ${{ steps.scope.outputs.ota }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - run: python tools/privacy_check.py
+      - name: Classify native, server and OTA-only changes
+        id: scope
+        run: python tools/change_scope.py
 
   backend:
     name: Backend tests
@@ -49,6 +59,7 @@ jobs:
   ios-tests:
     name: iOS simulator tests (${{ matrix.runtime }})
     needs: [privacy, native-runtime]
+    if: needs.privacy.outputs.native == 'true'
     runs-on: macos-15
     timeout-minutes: 25
     strategy:
@@ -99,7 +110,7 @@ jobs:
         run: python3 tools/capture_screenshots.py --device "$DEVICE_ID" --app build/simulator/Build/Products/Debug-iphonesimulator/Cubie.app --output build/screenshots
       - name: Save startup diagnostics
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
+        if: failure()
         with:
           name: CoreNest-runtime-startup-${{ matrix.runtime }}
           path: build/runtime-smoke
@@ -115,7 +126,7 @@ jobs:
           if-no-files-found: ignore
       - name: Save simulator build logs and tests
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
+        if: failure()
         with:
           name: cubie-simulator-results-${{ matrix.runtime }}
           path: |
@@ -127,6 +138,7 @@ jobs:
   docker-server:
     name: Docker server (${{ matrix.arch }})
     needs: privacy
+    if: needs.privacy.outputs.server == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -160,8 +172,11 @@ jobs:
 
   unsigned-ipa:
     name: Build unsigned device IPA
-    needs: [backend, ios-tests, docker-server]
-    if: github.event_name != 'pull_request'
+    needs: [privacy, backend, ios-tests, docker-server]
+    if: >-
+      !cancelled() && github.event_name != 'pull_request' && needs.privacy.outputs.native == 'true' &&
+      needs.backend.result == 'success' && needs.ios-tests.result == 'success' &&
+      (needs.docker-server.result == 'success' || needs.docker-server.result == 'skipped')
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -198,7 +213,7 @@ jobs:
           compression-level: 0
       - name: Save device build log
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
+        if: failure()
         with:
           name: cubie-device-build-log
           path: build/device-build.log
@@ -217,6 +232,7 @@ jobs:
   runtime-checks:
     name: OTA TypeScript and lifecycle checks
     needs: privacy
+    if: needs.privacy.outputs.runtime == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
@@ -237,6 +253,7 @@ jobs:
   native-runtime:
     name: Build embedded OTA runtime
     needs: [privacy, runtime-checks]
+    if: needs.privacy.outputs.native == 'true'
     runs-on: macos-15
     timeout-minutes: 45
     defaults:
@@ -282,12 +299,22 @@ jobs:
           retention-days: 7
           if-no-files-found: error
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
+        if: failure()
         with:
           name: CoreNest-runtime-build-log
           path: runtime/runtime-build.log
           retention-days: 7
           if-no-files-found: ignore
+
+  ota:
+    name: Publish compatible page-only update
+    needs: [privacy, backend, runtime-checks]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.privacy.outputs.ota == 'true'
+    uses: ./.github/workflows/ios-ota.yml
+    with:
+      channel: production
+      source_ref: ${{ github.sha }}
+    secrets: inherit
 
   release:
     name: Publish verified iOS release

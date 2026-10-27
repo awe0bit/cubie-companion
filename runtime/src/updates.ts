@@ -7,6 +7,8 @@ import type { OTAState } from './types';
 let task: Promise<void> | undefined;
 let checkedAt = 0;
 let started = false;
+let remoteDisabled = false;
+const observers = new Set<(value: OTAState) => void>();
 let state: OTAState = {
   stage: Updates.isEnabled ? 'idle' : 'disabled', progress: 0,
   runtime: Updates.runtimeVersion ?? 'embedded', channel: Updates.channel ?? 'not-configured',
@@ -16,9 +18,15 @@ let state: OTAState = {
 function publish(stage: OTAState['stage'], progress = 0) {
   state = { ...state, stage, progress };
   reportUpdate(state);
+  observers.forEach(listener => listener(state));
+}
+export function updateState() { return state; }
+export function observeUpdates(listener: (value: OTAState) => void) {
+  observers.add(listener); listener(state);
+  return () => { observers.delete(listener); };
 }
 export function checkUpdate(force = false): Promise<void> {
-  if (!Updates.isEnabled || __DEV__) { publish('disabled'); return Promise.resolve(); }
+  if (remoteDisabled || !Updates.isEnabled || __DEV__) { publish('disabled'); return Promise.resolve(); }
   if (state.stage === 'pending') { reportUpdate(state); return Promise.resolve(); }
   if (task) return task;
   if (!force && Date.now() - checkedAt < 60 * 60 * 1000) { reportUpdate(state); return Promise.resolve(); }
@@ -37,6 +45,7 @@ export function checkUpdate(force = false): Promise<void> {
 export function startUpdates(disableRemote = false) {
   if (started) { reportUpdate(state); return; }
   started = true;
+  remoteDisabled = disableRemote;
   if (disableRemote) { publish('disabled'); return; }
   void checkUpdate();
   AppState.addEventListener('change', next => { if (next === 'active' && state.stage !== 'pending') void checkUpdate(); });

@@ -1,6 +1,14 @@
 name: CoreNest iOS OTA
 
 on:
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        default: production
+      source_ref:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       channel:
