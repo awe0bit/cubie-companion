@@ -147,6 +147,7 @@ struct RuntimeScreen: View {
     @State private var client = UUID().uuidString
     @State private var fallback = false
     @State private var destination: RuntimeDestination?
+    @State private var searchQuery = ""
     let route: AppTab
     private var ready: Bool { bridge.readyClients.contains(client) }
 
@@ -167,6 +168,8 @@ struct RuntimeScreen: View {
                         "appearance": LaunchMode.argument(after: "--preview-appearance") ?? "system",
                         "disableRemoteUpdates": LaunchMode.isUITesting,
                         "bottomInset": geometry.safeAreaInsets.bottom,
+                        "nativeSearch": route == .services,
+                        "searchQuery": searchQuery,
                     ])
                     .ignoresSafeArea(.container, edges: .bottom)
                     if !ready {
@@ -179,6 +182,17 @@ struct RuntimeScreen: View {
         }
         .background(Surface.canvas.ignoresSafeArea())
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .modifier(ServiceSearch(enabled: route == .services, query: $searchQuery))
+        .onChange(of: searchQuery) { _, value in
+            BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "search",
+                                             "client": client, "query": String(value.prefix(128))])
+        }
+        .onChange(of: ready) { _, value in
+            if value && route == .services {
+                BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "search",
+                                                 "client": client, "query": String(searchQuery.prefix(128))])
+            }
+        }
         .toolbar {
             if route == .devices && !fallback {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -227,5 +241,16 @@ struct RuntimeScreen: View {
         case .services: ServicesView()
         case .devices: DevicesView()
         }
+    }
+}
+
+private struct ServiceSearch: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索服务")
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+        } else { content }
     }
 }

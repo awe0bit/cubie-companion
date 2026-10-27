@@ -138,7 +138,7 @@ final class CoreNestUITests: XCTestCase {
         let app = launch()
         explore(app)
         app.tabBars.buttons["服务"].tap()
-        let search = app.textFields["service-search"]
+        let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
         search.typeText("demo-blog")

@@ -1,7 +1,7 @@
 import * as Brownfield from 'expo-brownfield';
 import type { Snapshot } from './types';
 
-type Message = { type?: string; snapshot?: Snapshot; client?: string; command?: string };
+type Message = { type?: string; snapshot?: Snapshot; client?: string; command?: string; query?: string };
 const listeners = new Set<(message: Message) => void>();
 Brownfield.addMessageListener((message: Message) => listeners.forEach(listener => listener(message)));
 

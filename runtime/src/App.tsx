@@ -7,11 +7,11 @@ import { layout, palette } from './theme';
 import { bytes, groupedServices, stateText } from './presentation';
 import type { Route, Snapshot } from './types';
 
-type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean; bottomInset?: number };
-export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false, bottomInset = 0 }: Props) {
+type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean; bottomInset?: number; nativeSearch?: boolean; searchQuery?: string };
+export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false, bottomInset = 0, nativeSearch = false, searchQuery = '' }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => JSON.parse(snapshotJSON));
   const [filter, setFilter] = useState('全部');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(searchQuery);
   const [pulling, setPulling] = useState(false);
   const [refreshFeedback, setRefreshFeedback] = useState('');
   const manualRefresh = useRef<ManualRefresh | null>(null);
@@ -30,6 +30,9 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       }
       if (message.type === 'corenest.refresh' && message.client === client) {
         manualRefresh.current?.finish();
+      }
+      if (message.command === 'search' && message.client === client && typeof message.query === 'string') {
+        setQuery(message.query.slice(0, 128));
       }
     });
     act('ready'); startUpdates(disableRemoteUpdates);
@@ -113,10 +116,10 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
           <Text style={{ color: colors.ink, fontSize: 23, fontWeight: '600' }}>{running}<Text style={{ color: colors.quiet, fontSize: 13 }}> / {snapshot.services.length + containers.length} 运行中</Text></Text>
           {label(`${containers.length} 个容器`, true, 12)}
         </View>
-        <TextInput accessibilityLabel="搜索服务" testID="service-search" defaultValue="" onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
+        {!nativeSearch && <TextInput accessibilityLabel="搜索服务" testID="service-search" defaultValue="" onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
           placeholderTextColor={colors.quiet} clearButtonMode="while-editing" autoCorrect={false} autoCapitalize="none"
           returnKeyType="search" onSubmitEditing={Keyboard.dismiss}
-          style={[styles.search, { color: colors.ink, backgroundColor: colors.surface }]} />
+          style={[styles.search, { color: colors.ink, backgroundColor: colors.surface }]} />}
         <View style={styles.filters}>
           {['全部', 'Docker', '系统'].map(item => <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected: filter === item }} onPress={() => setFilter(item)}
             style={[styles.filter, { backgroundColor: filter === item ? colors.ink : colors.surface }]}><Text style={{ color: filter === item ? colors.surface : colors.quiet, fontSize: 12, fontWeight: '600' }}>{item}</Text></Pressable>)}
