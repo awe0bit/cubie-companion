@@ -8,6 +8,15 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(require.resolve('../src/pr
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, { exports: exportsObject });
 const { groupedServices, bytes, stateText } = exportsObject;
+test('targeted snapshots do not wake other roots and legacy broadcasts still work', () => {
+  assert.equal(exportsObject.acceptsSnapshotClient('overview', 'overview'), true);
+  assert.equal(exportsObject.acceptsSnapshotClient('overview', 'services'), false);
+  assert.equal(exportsObject.acceptsSnapshotClient(undefined, 'services'), true);
+});
+test('control badges reflect permissions without granting them', () => {
+  const groups = groupedServices([{ id: 'panel', name: 'Panel', unit: 'panel.service', state: 'active', controllable: false }], [], '', '系统');
+  assert.ok(groups[0].items[0].subtitle.endsWith('只读'));
+});
 const services = [{ id: 'panel', name: '1Panel', unit: '1panel.service', state: 'active' }];
 const containers = [{ id: 'fixture', name: 'demo-blog', image: 'example/blog:1', state: 'running' }];
 test('Docker and host services are never mixed in one category', () => {

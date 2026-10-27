@@ -332,7 +332,7 @@ class App:
         raise APIError(401, "unauthorized")
 
     def capabilities(self, role, managed):
-        return {"apiVersion": 1, "role": role, "snapshotBundle": True, "liveSnapshots": True,
+        return {"apiVersion": 1, "role": role, "snapshotBundle": True, "liveSnapshots": True, "adaptiveStreaming": True,
                 "serviceControl": self.config.get("serviceControl") is True and role == "admin" and managed.get('serviceControl', True),
                 "deviceReboot": self.config.get("deviceReboot") is True and role == "admin",
                 "rawLogs": False,
@@ -462,13 +462,16 @@ class App:
                 from realtime import SnapshotStream, frame
                 role = self.role(env)
                 if env.get('QUERY_STRING'): raise APIError(400, 'query_not_supported')
+                interval = env.get('HTTP_X_CORENEST_INTERVAL', '1')
+                if interval not in {'1', '5', '15'}: raise APIError(400, 'invalid_stream_interval')
                 if not self.stream_slots.acquire(blocking=False): raise APIError(503, 'stream_capacity')
                 try:
                     initial = frame(self.bundled_snapshot(role))
                 except Exception:
                     self.stream_slots.release()
                     raise
-                stream = SnapshotStream(self, env, initial)
+                stream = SnapshotStream(self, env, initial,
+                    duration=90 if 'HTTP_X_CORENEST_INTERVAL' in env else 12, interval=int(interval))
                 try:
                     start_response('200 OK', [('Content-Type', 'text/event-stream; charset=utf-8'),
                         ('Cache-Control', 'no-store, no-transform'), ('X-Accel-Buffering', 'no'),

@@ -94,6 +94,7 @@ struct Capabilities: Codable {
     let managementInventory: Bool?
     let snapshotBundle: Bool?
     let liveSnapshots: Bool?
+    let adaptiveStreaming: Bool?
 }
 
 struct DashboardSnapshot: Codable {

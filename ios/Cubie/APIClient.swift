@@ -1,4 +1,63 @@
 import Foundation
+import Combine
+import Network
+
+enum ConnectionPolicy {
+    static func interval(overview: Bool, settings: Bool = false, economy: Bool,
+                         constrained: Bool, thermal: ProcessInfo.ThermalState, expensive: Bool = false) -> Int {
+        if economy || constrained || thermal == .serious || thermal == .critical || settings { return 15 }
+        return overview && !expensive ? 1 : 5
+    }
+
+    static func retryDelay(failures: Int, jitter: Double) -> Double {
+        min(30, Double(1 << min(max(failures, 1), 5)) * (1 + min(max(jitter, 0), 1) * 0.2))
+    }
+
+    static func blocksAutomaticRetry(_ error: Error) -> Bool {
+        switch error {
+        case ConnectionError.http(let code): return code == 401 || code == 403 || (300..<400).contains(code)
+        case ConnectionError.incompatibleAPI: return true
+        default: return false
+        }
+    }
+}
+
+/// System path/power signals only: no ping loops, SSID collection or background keepalive.
+@MainActor
+final class ConnectionEnvironment: ObservableObject {
+    @Published private(set) var revision = 0
+    private(set) var available = true
+    private(set) var constrained = false
+    private(set) var expensive = false
+    private(set) var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    private(set) var thermal = ProcessInfo.processInfo.thermalState
+    private let monitor = NWPathMonitor()
+    private var signals = Set<AnyCancellable>()
+
+    init() {
+        guard !LaunchMode.isUITesting else { return }
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.available = path.status != .unsatisfied
+                self.constrained = path.isConstrained
+                self.expensive = path.isExpensive
+                self.revision += 1
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "corenest.network-path", qos: .utility))
+        for name in [Notification.Name.NSProcessInfoPowerStateDidChange, ProcessInfo.thermalStateDidChangeNotification] {
+            NotificationCenter.default.publisher(for: name).receive(on: RunLoop.main).sink { [weak self] _ in
+                guard let self else { return }
+                self.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+                self.thermal = ProcessInfo.processInfo.thermalState
+                self.revision += 1
+            }.store(in: &signals)
+        }
+    }
+
+    deinit { monitor.cancel() }
+}
 
 enum ConnectionError: LocalizedError {
     case invalidURL, missingToken, accessPair, keychain, unexpectedResponse, incompatibleAPI
@@ -41,6 +100,20 @@ final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
     }
 }
 
+private final class StreamCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+    private var cancelled = false
+    func attach(_ value: URLSessionTask) {
+        lock.lock(); task = value; let shouldCancel = cancelled; lock.unlock()
+        if shouldCancel { value.cancel() }
+    }
+    func cancel() {
+        lock.lock(); cancelled = true; let value = task; lock.unlock()
+        value?.cancel()
+    }
+}
+
 final class APIClient {
     private let credentials: ConnectionCredentials
     private let baseURL: URL
@@ -79,35 +152,46 @@ final class APIClient {
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.waitsForConnectivity = true
         session = URLSession(configuration: configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
         // Mutation requests must not queue behind periodic telemetry transfers.
         let controlConfiguration = configuration.copy() as! URLSessionConfiguration
         controlConfiguration.httpMaximumConnectionsPerHost = 2
+        // Never leave a mutation queued until some later network becomes available.
+        controlConfiguration.waitsForConnectivity = false
         controlSession = URLSession(configuration: controlConfiguration, delegate: NoRedirectDelegate(), delegateQueue: nil)
         let streamConfiguration = configuration.copy() as! URLSessionConfiguration
-        streamConfiguration.timeoutIntervalForRequest = 8
-        streamConfiguration.timeoutIntervalForResource = 20
+        streamConfiguration.timeoutIntervalForRequest = 45
+        streamConfiguration.timeoutIntervalForResource = 120
         streamConfiguration.httpMaximumConnectionsPerHost = 1
         streamSession = URLSession(configuration: streamConfiguration, delegate: NoRedirectDelegate(), delegateQueue: nil)
     }
 
     deinit { session.invalidateAndCancel(); controlSession.invalidateAndCancel(); streamSession.invalidateAndCancel() }
 
-    func snapshots(receive: @MainActor (DashboardSnapshot) -> Void) async throws {
+    func snapshots(interval: Int = 1, adaptive: Bool = false,
+                   receive: @MainActor (DashboardSnapshot) throws -> Void) async throws {
         var request = authorizedRequest("events")
+        if adaptive { request.setValue(String([1, 5, 15].contains(interval) ? interval : 5), forHTTPHeaderField: "X-CoreNest-Interval") }
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        let cancellation = StreamCancellation()
+        try await withTaskCancellationHandler {
         let (bytes, response) = try await streamSession.bytes(for: request)
-        defer { bytes.task.cancel() }
+        cancellation.attach(bytes.task)
+        defer { cancellation.cancel() }
         guard let response = response as? HTTPURLResponse else { throw ConnectionError.unexpectedResponse }
         guard response.statusCode == 200 else { throw ConnectionError.http(response.statusCode) }
         guard response.mimeType == "text/event-stream" else { throw ConnectionError.unexpectedResponse }
         var parser = SnapshotEventDecoder()
         for try await byte in bytes {
             try Task.checkCancellation()
-            if let snapshot = try parser.append(byte) { await receive(snapshot) }
+            if let snapshot = try parser.append(byte) { try await receive(snapshot) }
         }
         guard parser.complete else { throw ConnectionError.unexpectedResponse }
+        } onCancel: { cancellation.cancel() }
     }
+
+    func cancelControls() { controlSession.getAllTasks { $0.forEach { $0.cancel() } } }
 
     private func authorizedRequest(_ path: String) -> URLRequest {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1").appendingPathComponent(path))
@@ -119,16 +203,17 @@ final class APIClient {
         return request
     }
 
-    func get<T: Decodable>(_ path: String) async throws -> T {
-        try await request(path, body: nil)
+    func get<T: Decodable>(_ path: String, timeout: TimeInterval? = nil) async throws -> T {
+        try await request(path, body: nil, timeout: timeout)
     }
 
     func post<T: Decodable>(_ path: String, body: [String: String]) async throws -> T {
         try await request(path, body: body)
     }
 
-    private func request<T: Decodable>(_ path: String, body: [String: String]?) async throws -> T {
+    private func request<T: Decodable>(_ path: String, body: [String: String]?, timeout: TimeInterval? = nil) async throws -> T {
         var request = authorizedRequest(path)
+        if let timeout { request.timeoutInterval = max(1, min(12, timeout)) }
         request.httpMethod = body == nil ? "GET" : "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {

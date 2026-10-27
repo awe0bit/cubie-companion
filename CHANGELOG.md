@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.2 — System-style settings
+## 0.9.2 — Focused settings, reliable controls and adaptive connectivity
 
 - Replace oversized mixed-content Settings cards with two native inset-grouped
   sections and four working entries: binding, live connection, updates and privacy.
@@ -9,8 +9,19 @@
 - Move telemetry explanations and credential guidance into dedicated detail pages;
   accessibility text sizes stack row values rather than shrinking or clipping them.
 - Preserve the single system tab bar, QR-only binding and Settings long-press tools.
-- This native Settings change requires one IPA update; OTA compatibility runtime
-  remains 0.9.0. No server or Docker deployment changes.
+- Native changes require one IPA update; OTA compatibility runtime remains 0.9.0.
+- Service and Docker controls distinguish sending, accepted, fresh-state confirmation,
+  rejection and uncertain results. Mutations never automatically retry; finite background
+  grace only finishes an explicit operation. Shared service/Docker cooldown matches the broker.
+- Observe system connectivity, power and thermal changes. Wi-Fi overview samples every
+  second, metered overview and service/device pages every five, and settings/economy mode
+  every fifteen. Background telemetry stops; foreground/path changes reconnect promptly.
+- Offline waits for a usable path; auth failures pause automatic retries. Transient errors
+  back off with jitter. A cancelled/old binding cannot overwrite a newer read or operation.
+- Target snapshots to visible runtime roots. Curves preserve per-sample cadence and real
+  outage gaps across policy changes, without updating hidden charts.
+- Add bounded adaptive SSE leases (90 seconds) and negotiated 1/5/15-second cadence.
+  Legacy clients retain their twelve-second lease and existing APIs.
 
 ## 0.9.1 — Hidden developer tools and OTA-first delivery
 

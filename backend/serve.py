@@ -21,7 +21,7 @@ def build_server(config_path, state_path, port, host="127.0.0.1", pairing_path=N
               collector=FileCollector(telemetry) if telemetry else None)
     # At most two streams, leaving four workers available for reads and controls.
     server = create_server(app, host=host, port=port, threads=6,
-        connection_limit=16, backlog=32, channel_timeout=15, asyncore_loop_timeout=0.1,
+        connection_limit=16, backlog=32, channel_timeout=45, asyncore_loop_timeout=0.1,
         # Pinned Waitress 3.0.2 includes the lookahead request-smuggling fix.
         channel_request_lookahead=1, log_socket_errors=False,
         max_request_body_size=1024, max_request_header_size=8192,

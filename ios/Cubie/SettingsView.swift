@@ -83,11 +83,12 @@ private struct SettingsListStyle: ViewModifier {
 
 @MainActor
 private func connectionState(_ store: BoardStore) -> String {
-    store.demo ? "演示模式" : store.live ? "实时推送" : store.stale ? "已中断" : "连接中"
+    store.connectionText
 }
 
 private struct ConnectionSettingsView: View {
     @EnvironmentObject private var store: BoardStore
+    @AppStorage("connection.economy.v1") private var economy = false
 
     var body: some View {
         List {
@@ -99,17 +100,21 @@ private struct ConnectionSettingsView: View {
                 NavigationLink { NetworkView() } label: {
                     Label("网络详情", systemImage: "wifi")
                 }.accessibilityIdentifier("settings-network")
+                if !store.demo {
+                    Button("重新连接") { store.reconnect() }.accessibilityIdentifier("connection-reconnect")
+                }
             } footer: {
                 Text("仅在应用前台接收数据，切到后台后暂停连接。")
             }
             Section {
-                LabeledContent("曲线采样", value: "每秒")
-                LabeledContent("数字更新", value: "每 5 秒")
+                Toggle("节能刷新", isOn: $economy).accessibilityIdentifier("connection-economy")
+                LabeledContent("曲线采样", value: store.demo ? "演示数据" : "每 \(store.sampleInterval) 秒")
+                LabeledContent("数字更新", value: "至少间隔 5 秒")
                 LabeledContent("趋势保留", value: "最近 2 分钟")
             } header: {
                 Text("实时数据")
             } footer: {
-                Text("趋势仅保留本次会话的数据；连接中断时保留缺口，不补造数据。")
+                Text("自动模式：Wi-Fi 概览每秒，蜂窝概览、服务与设备每 5 秒，设置每 15 秒刷新。开启节能刷新，或系统低电量、低数据模式、手机过热时，每 15 秒刷新。后台暂停；趋势仅保留本次会话的数据，连接中断时保留缺口。")
             }
         }
         .modifier(SettingsListStyle())

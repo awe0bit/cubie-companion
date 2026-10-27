@@ -14,6 +14,8 @@ struct RootView: View {
     @EnvironmentObject private var store: BoardStore
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var navigation = AppNavigation()
+    @StateObject private var connection = ConnectionEnvironment()
+    @AppStorage("connection.economy.v1") private var economy = false
     @AppStorage("hasSeenWelcome.v1") private var hasSeenWelcome = false
     @State private var showWelcome = false
     @State private var initialAppearanceHandled = false
@@ -91,9 +93,15 @@ struct RootView: View {
                 showWelcome = !hasSeenWelcome && store.demo
             }
         }
-        .task(id: "\(scenePhase)-\(store.endpoint)") {
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { store.pauseConnection() }
+        }
+        .task(id: "\(scenePhase)-\(store.endpoint)-\(connection.revision)-\(navigation.selection)-\(economy)-\(store.connectionRevision)") {
             guard scenePhase == .active, !LaunchMode.isUITesting else { return }
-            await store.receiveLiveUpdates()
+            let interval = ConnectionPolicy.interval(overview: navigation.selection == .overview,
+                settings: navigation.selection == .settings, economy: economy || connection.lowPower,
+                constrained: connection.constrained, thermal: connection.thermal, expensive: connection.expensive)
+            await store.receiveLiveUpdates(interval: interval, networkAvailable: connection.available)
         }
     }
 }

@@ -7,7 +7,7 @@ import { TrendCard } from './TrendCard';
 import { DeveloperTools } from './DeveloperTools';
 import { telemetry } from './telemetry';
 import { layout, palette } from './theme';
-import { bytes, groupedServices, stateText } from './presentation';
+import { acceptsSnapshotClient, bytes, groupedServices, stateText } from './presentation';
 import type { Route, Snapshot } from './types';
 
 type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean; bottomInset?: number; nativeSearch?: boolean; searchQuery?: string; nativeToolbar?: boolean; serviceFilter?: string };
@@ -29,7 +29,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const act = (action: string, id?: string) => send(client, action, id);
   useEffect(() => {
     const unsubscribe = subscribe(message => {
-      if (message.type === 'corenest.snapshot' && message.snapshot) {
+      if (message.type === 'corenest.snapshot' && message.snapshot && acceptsSnapshotClient(message.client, client)) {
         setSnapshot(message.snapshot);
         setDashboard(telemetry.accept(message.snapshot));
         manualRefresh.current?.snapshot(message.snapshot.refreshing, message.snapshot.refreshAcknowledgement === true);
@@ -85,7 +85,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       <View accessibilityLabel={snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断，上次数据' : '已连接'} style={styles.banner}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: snapshot.stale ? colors.warning : snapshot.demo ? colors.quiet : colors.success }} />
-          {label(snapshot.demo ? '演示数据' : snapshot.stale ? '离线 · 保留上次数据' : snapshot.live ? '已连接' : '正在连接', true, 11)}
+          {label(snapshot.demo ? '演示数据' : snapshot.stale ? `${snapshot.connectionText ?? '离线'} · 保留上次数据` : snapshot.connectionText ?? (snapshot.live ? '已连接' : '正在连接'), true, 11)}
         </View>
         {route === 'overview' && label(`${running}/${snapshot.services.length + containers.length} 服务在线`, true, 11)}
       </View>
@@ -98,7 +98,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
             <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 20, fontWeight: '600' }}>{b.hostname}</Text>
             {label(`Cubie A7S${b.uptimeSeconds != null ? ` · 运行 ${Math.floor(b.uptimeSeconds / 3600)}h ${Math.floor(b.uptimeSeconds % 3600 / 60)}m` : ''}`, true, 12)}
           </View>
-          <TrendCard data={dashboard} dark={dark} demo={snapshot.demo} stale={snapshot.stale} largeText={narrow} />
+          <TrendCard data={dashboard} dark={dark} demo={snapshot.demo} stale={snapshot.stale} largeText={narrow} sampleInterval={snapshot.sampleInterval} />
           {card(<View style={styles.metrics}>
             {b.memoryUsedBytes != null && metric('内存', bytes(b.memoryUsedBytes), `共 ${bytes(b.memoryTotalBytes)}`, b.memoryTotalBytes ? b.memoryUsedBytes / b.memoryTotalBytes : undefined)}
             {b.diskUsedBytes != null && metric('存储', bytes(b.diskUsedBytes), `共 ${bytes(b.diskTotalBytes)}`, b.diskTotalBytes ? b.diskUsedBytes / b.diskTotalBytes : undefined)}
@@ -130,7 +130,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
           <View style={styles.heading}>{label(group.title, true, 12)}{label(String(group.items.length), true, 11)}</View>
           {card(group.items.map((s, i) => <React.Fragment key={s.id}>
             {i > 0 && separator}
-            {link(s.name, s.subtitle, s.kind === 'docker' ? 'open.container' : 'open.service', `${s.kind === 'docker' ? 'container' : 'service'}-${s.id}`, s.id, group.badge, s.state)}
+            {link(s.name, `${s.subtitle}${snapshot.operation?.busy && snapshot.operation.target === s.id && snapshot.operation.kind === (s.kind === 'docker' ? 'container' : 'service') ? ' · 正在操作…' : ''}`, s.kind === 'docker' ? 'open.container' : 'open.service', `${s.kind === 'docker' ? 'container' : 'service'}-${s.id}`, s.id, group.badge, s.state)}
           </React.Fragment>), undefined, true)}
         </View>)}
         {!groups.length && card(label(query ? '没有匹配的服务' : '暂无服务数据', true))}

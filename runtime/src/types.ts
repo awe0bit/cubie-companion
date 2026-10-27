@@ -1,10 +1,12 @@
 export type Route = 'overview' | 'services' | 'devices' | 'developer';
-export type Service = { id: string; name: string; unit: string; state: string; stateText: string };
+export type Service = { id: string; name: string; unit: string; state: string; stateText: string; controllable?: boolean };
 export type Container = { id: string; name: string; image: string; state: string; controllable: boolean };
 export type Hardware = { id: string; category: string; name: string; stateText: string };
 export type Snapshot = {
   demo: boolean; stale: boolean; refreshing: boolean; error?: string; notice?: string;
   refreshAcknowledgement?: boolean; live?: boolean; telemetrySession?: string;
+  sampleInterval?: number; connectionText?: string;
+  operation?: { kind: string; target: string; busy: boolean; message: string };
   app?: { version: string; build: string };
   lastContact?: string; inventoryError?: string; inventoryStale: boolean;
   status?: {

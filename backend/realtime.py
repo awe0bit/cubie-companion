@@ -11,8 +11,8 @@ def frame(snapshot):
 
 
 class SnapshotStream:
-    # Short leases bound worker occupancy even if a proxy delays disconnect detection.
-    # The native client renews successful leases, with no repeated full HTTP polling.
+    # Bounded leases reserve control capacity. New clients negotiate slower sampling;
+    # disconnects/revocation are still checked every second, not every sample interval.
     def __init__(self, app, env, initial, duration=12, interval=1):
         self.app, self.env, self.initial = app, env, initial
         self.duration, self.interval = duration, interval
@@ -26,9 +26,15 @@ class SnapshotStream:
             while not self.closed and time.monotonic() < end:
                 disconnected = self.env.get('waitress.client_disconnected')
                 if callable(disconnected) and disconnected(): break
-                time.sleep(self.interval)
-                if self.closed or time.monotonic() >= end: break
-                if callable(disconnected) and disconnected(): break
+                for _ in range(self.interval):
+                    time.sleep(1)
+                    if (self.closed or time.monotonic() >= end
+                            or (callable(disconnected) and disconnected())):
+                        return
+                    try: self.app.role(self.env)
+                    except Exception:
+                        yield b'event: unavailable\ndata: {}\n\n'
+                        return
                 try:
                     # Revalidate revocation/role on every sample, not just stream opening.
                     role = self.app.role(self.env)

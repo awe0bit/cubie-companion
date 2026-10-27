@@ -27,6 +27,7 @@ final class RuntimeBridge: ObservableObject {
     @Published private(set) var embeddedLaunch = true
     @Published private(set) var emergencyLaunch = false
     @Published private(set) var readyClients = Set<String>()
+    private var visibleClients = Set<String>()
     private weak var store: BoardStore?
     private var subscription: AnyCancellable?
     private var emission: Task<Void, Never>?
@@ -56,11 +57,29 @@ final class RuntimeBridge: ObservableObject {
         var result: [String: Any] = [
             "demo": store.demo, "stale": store.stale, "refreshing": store.userRefreshing,
             "refreshAcknowledgement": true, "live": store.live, "telemetrySession": store.telemetrySession,
+            "sampleInterval": store.sampleInterval, "connectionText": store.connectionText,
             "app": ["version": Brand.version, "build": Brand.build],
             "inventoryStale": store.inventoryStale,
-            "services": store.services.map { ["id": $0.id, "name": $0.name, "unit": $0.unit, "state": $0.state, "stateText": $0.stateText] },
+            "services": store.services.map { service -> [String: Any] in
+                ["id": service.id, "name": service.name, "unit": service.unit, "state": service.state,
+                 "stateText": service.stateText, "controllable": !store.demo && service.controllable && store.capabilities?.serviceControl == true]
+            },
         ]
-        if let management = store.management { result["management"] = object(management) }
+        if let management = store.management {
+            result["management"] = ["sampledAt": management.sampledAt, "dockerAvailable": management.dockerAvailable,
+                "containers": management.containers.map { item -> [String: Any] in
+                    ["id": item.id, "name": item.name, "image": item.image, "state": item.state,
+                     "controllable": !store.demo && item.controllable && store.capabilities?.dockerControl == true]
+                },
+                "leds": management.leds.map { item -> [String: Any] in
+                    ["id": item.id, "name": item.name, "mode": item.mode,
+                     "controllable": !store.demo && item.controllable && store.capabilities?.ledControl == true]
+                }]
+        }
+        if let operation = store.operation {
+            result["operation"] = ["kind": operation.kind, "target": operation.target,
+                                   "busy": operation.busy, "message": operation.message]
+        }
         if let error = store.managementError { result["managementError"] = error }
         if let status = store.status { result["status"] = object(status) }
         if let inventory = store.inventory {
@@ -88,14 +107,23 @@ final class RuntimeBridge: ObservableObject {
 
     private func emit() {
         guard let store else { return }
-        BrownfieldMessaging.sendMessage(["type": "corenest.snapshot", "snapshot": Self.snapshot(store)])
+        let clients = visibleClients.intersection(readyClients)
+        guard !clients.isEmpty else { return }
+        let snapshot = Self.snapshot(store)
+        for client in clients {
+            BrownfieldMessaging.sendMessage(["type": "corenest.snapshot", "client": client, "snapshot": snapshot])
+        }
     }
 
     func checkUpdate() {
         BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "check-update"])
     }
 
-    func retire(_ client: String) { readyClients.remove(client) }
+    func setVisible(_ client: String, _ visible: Bool) {
+        if visible { visibleClients.insert(client); emit() }
+        else { visibleClients.remove(client) }
+    }
+    func retire(_ client: String) { readyClients.remove(client); visibleClients.remove(client) }
 
     private func receive(_ message: [String: Any]) async {
         if message["type"] as? String == "corenest.ota" {
@@ -264,8 +292,8 @@ struct RuntimeScreen: View {
             default: AboutView()
             }
         }
-        .onAppear { RuntimeBridge.shared.connect(store) }
-        .onDisappear { if route == .developer { bridge.retire(client) } }
+        .onAppear { bridge.connect(store); bridge.setVisible(client, true) }
+        .onDisappear { bridge.setVisible(client, false); if route == .developer { bridge.retire(client) } }
         .onReceive(NotificationCenter.default.publisher(for: .runtimeAction)) { event in
             guard let message = event.userInfo, message["client"] as? String == client,
                   let action = message["action"] as? String else { return }

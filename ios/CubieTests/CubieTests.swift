@@ -3,6 +3,85 @@ import UIKit
 @testable import Cubie
 
 final class CubieTests: XCTestCase {
+    func testConnectionPolicyUsesPowerNetworkAndThermalSignals() {
+        XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: false, thermal: .nominal), 1)
+        XCTAssertEqual(ConnectionPolicy.interval(overview: false, economy: false, constrained: false, thermal: .nominal), 5)
+        XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: false, thermal: .nominal, expensive: true), 5)
+        XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: true, constrained: false, thermal: .nominal), 15)
+        XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: true, thermal: .nominal), 15)
+        XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: false, thermal: .serious), 15)
+        XCTAssertEqual(ConnectionPolicy.interval(overview: false, settings: true, economy: false, constrained: false, thermal: .nominal), 15)
+        XCTAssertEqual(ConnectionPolicy.retryDelay(failures: 1, jitter: 0), 2)
+        XCTAssertEqual(ConnectionPolicy.retryDelay(failures: 99, jitter: 1), 30)
+        for code in [301, 302, 401, 403] { XCTAssertTrue(ConnectionPolicy.blocksAutomaticRetry(ConnectionError.http(code))) }
+        for code in [429, 503, 530] { XCTAssertFalse(ConnectionPolicy.blocksAutomaticRetry(ConnectionError.http(code))) }
+    }
+
+    @MainActor private func controlStore(confirm: Bool = true, fail: Bool = false) throws -> BoardStore {
+        let caps = try JSONDecoder().decode(Capabilities.self, from: Data(#"{"apiVersion":1,"role":"admin","serviceControl":true,"deviceReboot":false,"rawLogs":false,"dockerControl":false,"ledControl":false,"powerMeasurement":false,"fanRPM":false,"managementInventory":true,"deviceInventory":true,"snapshotBundle":true,"adaptiveStreaming":true}"#.utf8))
+        let bundle = DashboardSnapshot(status: Demo.status, services: ServiceList(sampledAt: Demo.status.sampledAt,
+            services: [BoardService(id: "panel", unit: "1panel-core.service", name: "Panel", state: "inactive", controllable: true)]),
+            network: Demo.network, capabilities: caps, management: Demo.management, inventory: Demo.inventory)
+        let initial = try JSONEncoder().encode(bundle)
+        var changed = try JSONSerialization.jsonObject(with: initial) as! [String: Any]
+        var services = changed["services"] as! [String: Any]
+        var item = (services["services"] as! [[String: Any]])[0]
+        item["state"] = "active"
+        services["services"] = [item]
+        services["sampledAt"] = "2026-10-25T07:23:11Z"
+        changed["services"] = services
+        let confirmed = try JSONSerialization.data(withJSONObject: changed)
+        ControlProtocol.prepare(initial: initial, confirmed: confirm ? confirmed : initial, fail: fail)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ControlProtocol.self]
+        let client = try APIClient(ConnectionCredentials(baseURL: "https://control.example.com",
+            apiToken: String(repeating: "t", count: 40), accessClientID: "", accessClientSecret: ""), configuration: configuration)
+        return BoardStore(testClient: client, confirmationDelays: [0, 0])
+    }
+
+    @MainActor func testServiceControlConfirmsFreshStateAndPostsOnlyOnce() async throws {
+        let store = try controlStore()
+        await store.refresh()
+        let service = try XCTUnwrap(store.services.first)
+        XCTAssertTrue(store.serviceActionAllowed(service, action: "start"))
+        XCTAssertFalse(store.serviceActionAllowed(service, action: "stop"))
+        await store.act(service: service, action: "start")
+        XCTAssertEqual(ControlProtocol.posts, 1)
+        XCTAssertEqual(store.operation?.phase, .confirmed)
+        XCTAssertEqual(store.services.first?.state, "active")
+        XCTAssertFalse(store.operating)
+        XCTAssertTrue(store.controlsCoolingDown)
+    }
+
+    @MainActor func testUncertainMutationIsNotRetriedOrReportedAsSuccess() async throws {
+        let store = try controlStore(fail: true)
+        await store.refresh()
+        await store.act(service: try XCTUnwrap(store.services.first), action: "start")
+        XCTAssertEqual(ControlProtocol.posts, 1)
+        XCTAssertEqual(store.operation?.phase, .uncertain)
+        XCTAssertFalse(store.operating)
+    }
+
+    @MainActor func testAcceptedButUnchangedStateRemainsUnconfirmed() async throws {
+        let store = try controlStore(confirm: false)
+        await store.refresh()
+        await store.act(service: try XCTUnwrap(store.services.first), action: "start")
+        XCTAssertEqual(ControlProtocol.posts, 1)
+        XCTAssertEqual(store.operation?.phase, .uncertain)
+        XCTAssertEqual(store.services.first?.state, "inactive")
+    }
+
+    @MainActor func testNoNetworkDoesNotPollAndPauseDisablesControl() async throws {
+        let store = try controlStore()
+        await store.receiveLiveUpdates(interval: 15, networkAvailable: false)
+        XCTAssertEqual(ControlProtocol.requests, 0)
+        XCTAssertEqual(store.connectionPhase, .offline)
+        XCTAssertTrue(store.stale)
+        store.pauseConnection()
+        XCTAssertEqual(store.connectionPhase, .paused)
+        XCTAssertFalse(store.canControl)
+    }
+
     @MainActor func testRefreshCoalescesPollAndPullIntoOneSnapshotRequest() async throws {
         let caps = try JSONDecoder().decode(Capabilities.self, from: Data(#"{"apiVersion":1,"role":"viewer","serviceControl":false,"deviceReboot":false,"rawLogs":false,"dockerControl":false,"ledControl":false,"powerMeasurement":false,"fanRPM":false,"managementInventory":true,"deviceInventory":true,"snapshotBundle":true}"#.utf8))
         let body = try JSONEncoder().encode(DashboardSnapshot(status: Demo.status,
@@ -240,6 +319,38 @@ private final class SnapshotProtocol: URLProtocol {
                                        headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+private final class ControlProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var initial = Data(), confirmed = Data()
+    private static var fail = false, postCount = 0, requestCount = 0
+    static var posts: Int { lock.lock(); defer { lock.unlock() }; return postCount }
+    static var requests: Int { lock.lock(); defer { lock.unlock() }; return requestCount }
+    static func prepare(initial: Data, confirmed: Data, fail: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        Self.initial = initial; Self.confirmed = confirmed; Self.fail = fail; postCount = 0; requestCount = 0
+    }
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "control.example.com" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lock.lock()
+        Self.requestCount += 1
+        let isPost = request.httpMethod == "POST"
+        if isPost { Self.postCount += 1 }
+        let fail = Self.fail && isPost
+        let body = isPost ? Data(#"{"accepted":true}"#.utf8) : Self.postCount > 0 ? Self.confirmed : Self.initial
+        Self.lock.unlock()
+        if fail { client?.urlProtocol(self, didFailWithError: URLError(.timedOut)); return }
+        guard isPost ? request.url?.path == "/v1/services/panel/actions" : request.url?.path == "/v1/snapshot" else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL)); return
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}

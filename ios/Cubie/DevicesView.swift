@@ -111,6 +111,7 @@ struct DeviceControlsView: View {
                                 }
                             }
                         }
+                        OperationFeedback(kind: "led", target: led.id)
                     }
                 }
                 if store.demo || store.capabilities?.role != "admin" {
@@ -156,15 +157,28 @@ struct ContainerDetailView: View {
                     Card {
                         ForEach(["start", "restart", "stop"], id: \.self) { action in
                             Button(titles[action] ?? action, role: action == "stop" ? .destructive : nil) { pending = action }
-                                .disabled(!store.managementReady || (action == "start" ? container.state == "running" : container.state != "running"))
+                                .disabled(!store.containerActionAllowed(container, action: action))
                                 .accessibilityIdentifier("container-\(action)")
                         }
                     }
                     Text("停止或重启会中断该应用。操作不会删除容器、镜像或数据卷。")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text(store.demo ? "示例容器，不会操作真实设备。" : !container.controllable ? "此容器受保护或未加入主板控制白名单。" : "当前绑定只有查看权限。")
+                    Text(store.demo ? "示例容器，不会操作真实设备。"
+                         : store.capabilities?.role != "admin" ? "当前绑定只有查看权限。"
+                         : store.capabilities?.dockerControl != true ? "主板尚未启用 Docker 控制，或控制组件暂不可用。"
+                         : "此容器受保护或未加入主板控制白名单。")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                OperationFeedback(kind: "container", target: container.id)
+                if !store.demo {
+                    if store.controlsCoolingDown {
+                        Text("操作间隔保护中，请稍候。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button { Task { await store.refresh(manual: true) } } label: {
+                        Label(store.refreshing ? "正在刷新…" : "刷新状态", systemImage: "arrow.clockwise")
+                    }.disabled(store.refreshing).accessibilityIdentifier("container-refresh")
                 }
             } else {
                 ContentUnavailableView("容器已不在列表", systemImage: "shippingbox", description: Text("返回服务页刷新。"))

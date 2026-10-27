@@ -1,4 +1,7 @@
 import type { Container, Service } from './types';
+export function acceptsSnapshotClient(target: string | undefined, client: string): boolean {
+  return target === undefined || target === client;
+}
 export function bytes(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB']; let index = 0;
@@ -12,8 +15,8 @@ export function stateText(state: string): string {
 export function groupedServices(services: Service[], containers: Container[], query: string, filter: string) {
   type Item = { id: string; name: string; subtitle: string; state: string; kind: string };
   const groups: { title: string; badge: string; items: Item[] }[] = [
-    { title: 'Docker 应用', badge: 'DK', items: filter === '系统' ? [] : containers.map(c => ({ ...c, subtitle: c.image, kind: 'docker' })) },
-    { title: '系统服务', badge: 'SYS', items: filter === 'Docker' ? [] : services.map(s => ({ ...s, subtitle: s.unit, kind: 'system' })) },
+    { title: 'Docker 应用', badge: 'DK', items: filter === '系统' ? [] : containers.map(c => ({ ...c, subtitle: `${c.image} · ${c.controllable ? '可管理' : '只读'}`, kind: 'docker' })) },
+    { title: '系统服务', badge: 'SYS', items: filter === 'Docker' ? [] : services.map(s => ({ ...s, subtitle: `${s.unit}${s.controllable === undefined ? '' : s.controllable ? ' · 可管理' : ' · 只读'}`, kind: 'system' })) },
   ];
   const needle = query.trim().toLocaleLowerCase();
   return groups.map(group => ({ ...group, items: group.items.filter(s => `${s.name} ${s.subtitle}`.toLocaleLowerCase().includes(needle))

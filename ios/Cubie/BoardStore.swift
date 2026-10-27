@@ -1,5 +1,18 @@
 import Foundation
 import Combine
+import UIKit
+
+enum ConnectionPhase: String { case connecting, live, polling, retrying, offline, paused, blocked }
+
+struct ControlOperation {
+    enum Phase { case sending, confirming, confirmed, uncertain, rejected }
+    let kind: String
+    let target: String
+    let action: String
+    var phase: Phase
+    var message: String
+    var busy: Bool { phase == .sending || phase == .confirming }
+}
 
 @MainActor
 final class BoardStore: ObservableObject {
@@ -23,18 +36,29 @@ final class BoardStore: ObservableObject {
     @Published private(set) var telemetrySession = UUID().uuidString
     @Published private(set) var operating = false
     @Published private(set) var operatingLEDID: String?
+    @Published private(set) var operation: ControlOperation?
+    @Published private(set) var connectionPhase: ConnectionPhase = .paused
+    @Published private(set) var sampleInterval = 1
+    @Published private(set) var connectionRevision = 0
     @Published var error: String?
     @Published var notice: String?
     private var client: APIClient?
     private var generation = 0
     private var refreshTask: Task<Void, Never>?
     private var bundleUnsupported = false
+    private var readEpoch = 0
+    private var refreshFailure: Error?
+    private var controlCooldownUntil: Date = .distantPast
+    private var cooldownTask: Task<Void, Never>?
+    private var confirmationDelays: [UInt64] = [0, 1, 2, 3, 5, 5]
     private var ledReadbacks: [String: (value: LEDReadback, received: Date)] = [:]
 
     #if DEBUG
-    init(testClient: APIClient) {
+    init(testClient: APIClient, confirmationDelays: [UInt64] = [0, 1, 2, 3, 5, 5]) {
         client = testClient
+        self.confirmationDelays = confirmationDelays
         demo = false
+        connectionPhase = .connecting
     }
     #endif
 
@@ -57,14 +81,34 @@ final class BoardStore: ObservableObject {
         }
     }
 
-    var stale: Bool { !demo && (lastContact.map { Date().timeIntervalSince($0) > 20 } ?? true) }
-    var canControl: Bool { !demo && !stale && error == nil && !operating && capabilities?.serviceControl == true }
+    var stale: Bool { !demo && ([ConnectionPhase.offline, .blocked].contains(connectionPhase) || (lastContact.map { Date().timeIntervalSince($0) > Double(max(20, sampleInterval * 3)) } ?? true)) }
+    var connectionText: String {
+        if demo { return "演示模式" }
+        switch connectionPhase {
+        case .connecting: return "连接中"
+        case .live: return "实时推送"
+        case .polling: return "定时刷新"
+        case .retrying: return "正在重连"
+        case .offline: return "等待网络"
+        case .paused: return "已暂停"
+        case .blocked: return "需要检查授权"
+        }
+    }
+    var controlsCoolingDown: Bool { Date() < controlCooldownUntil }
+    private var foregroundConnection: Bool { ![ConnectionPhase.paused, .offline, .blocked].contains(connectionPhase) }
+    var canControl: Bool { !demo && foregroundConnection && !stale && error == nil && !operating && !controlsCoolingDown && capabilities?.serviceControl == true }
     var canReboot: Bool { !demo && !stale && error == nil && !operating && capabilities?.deviceReboot == true }
-    var managementReady: Bool { !demo && !stale && !operating && error == nil && (managementLastContact.map { Date().timeIntervalSince($0) < 20 } ?? false) }
+    var managementReady: Bool { !demo && foregroundConnection && !stale && !operating && error == nil && (managementLastContact.map { Date().timeIntervalSince($0) < Double(max(20, sampleInterval * 3)) } ?? false) }
     var inventoryStale: Bool { !demo && (inventoryLastContact.map { Date().timeIntervalSince($0) > 20 } ?? true) }
 
     func showDemo() {
         generation += 1
+        pauseConnection()
+        operation = nil
+        operating = false
+        refreshFailure = nil
+        cooldownTask?.cancel()
+        controlCooldownUntil = .distantPast
         telemetrySession = UUID().uuidString
         refreshTask?.cancel()
         refreshTask = nil
@@ -104,6 +148,12 @@ final class BoardStore: ObservableObject {
         // Do not overwrite a working stored connection until authentication succeeds.
         try Keychain.save(bound)
         generation += 1
+        pauseConnection()
+        operation = nil
+        operating = false
+        refreshFailure = nil
+        cooldownTask?.cancel()
+        controlCooldownUntil = .distantPast
         telemetrySession = UUID().uuidString
         refreshTask?.cancel()
         refreshTask = nil
@@ -141,14 +191,15 @@ final class BoardStore: ObservableObject {
     func refresh(manual: Bool = false) async {
         guard !demo else { return }
         let revision = generation
+        let epoch = readEpoch
         if manual { userRefreshing = true }
-        defer { if manual && revision == generation { userRefreshing = false } }
+        defer { if manual && revision == generation && epoch == readEpoch { userRefreshing = false } }
         // Pull-to-refresh joins an in-flight poll instead of returning without doing anything.
         if let refreshTask { await refreshTask.value; return }
         let task = Task { await self.performRefresh() }
         refreshTask = task
         await task.value
-        if revision == generation { refreshTask = nil }
+        if revision == generation && epoch == readEpoch { refreshTask = nil }
     }
 
     private func loadSnapshot(_ client: APIClient) async throws -> DashboardSnapshot {
@@ -174,52 +225,92 @@ final class BoardStore: ObservableObject {
         guard !demo, !refreshing, let client else { return }
         refreshing = true
         let revision = generation
-        defer { if revision == generation { refreshing = false } }
+        let epoch = readEpoch
+        defer { if revision == generation && epoch == readEpoch { refreshing = false } }
         do {
             let bundle = try await loadSnapshot(client)
-            guard revision == generation, !Task.isCancelled else { return }
+            guard revision == generation, epoch == readEpoch, !Task.isCancelled else { return }
             try apply(bundle)
+            refreshFailure = nil
         } catch {
-            guard revision == generation, !Task.isCancelled else { return }
+            guard revision == generation, epoch == readEpoch, !Task.isCancelled else { return }
+            refreshFailure = error
             self.error = error is URLError ? "连接暂未完成，保留上次数据。请稍后下拉重试。" : "未能刷新，保留上次数据。\(error.localizedDescription)"
         }
     }
 
-    /// Called only by the scene's structured task; cancellation closes the stream on background/forget.
-    func receiveLiveUpdates() async {
+    func pauseConnection() {
+        readEpoch += 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshing = false
+        userRefreshing = false
+        live = false
+        connectionPhase = .paused
+    }
+
+    func reconnect() { refreshFailure = nil; connectionRevision += 1 }
+
+    /// A single foreground owner. Path/power changes cancel the old structured task.
+    func receiveLiveUpdates(interval: Int = 1, networkAvailable: Bool = true) async {
         guard !demo, let client else { return }
+        guard networkAvailable else { pauseConnection(); connectionPhase = .offline; return }
         let revision = generation
+        readEpoch += 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshing = false
+        userRefreshing = false
+        let epoch = readEpoch
+        sampleInterval = interval
+        connectionPhase = .connecting
         var failures = 0
-        await refresh()
-        defer { if generation == revision { live = false } }
-        while !Task.isCancelled && generation == revision {
+        if capabilities == nil { await refresh() }
+        guard revision == generation, epoch == readEpoch, !Task.isCancelled else { return }
+        if let failure = refreshFailure, ConnectionPolicy.blocksAutomaticRetry(failure) {
+            connectionPhase = .blocked; return
+        }
+        defer { if generation == revision && readEpoch == epoch { live = false } }
+        while !Task.isCancelled && generation == revision && readEpoch == epoch {
             do {
-                if capabilities?.liveSnapshots == true {
+                if capabilities?.liveSnapshots == true && (interval == 1 || capabilities?.adaptiveStreaming == true) {
+                    sampleInterval = capabilities?.adaptiveStreaming == true ? interval : 1
                     var received = false
-                    try await client.snapshots { [weak self] bundle in
-                        guard let self, self.generation == revision, !Task.isCancelled else { return }
-                        do {
-                            try self.apply(bundle)
-                            self.live = true
-                            received = true
-                        } catch { self.live = false }
+                    try await client.snapshots(interval: sampleInterval, adaptive: capabilities?.adaptiveStreaming == true) { [weak self] bundle in
+                        guard let self, self.generation == revision, self.readEpoch == epoch, !Task.isCancelled else { return }
+                        try self.apply(bundle)
+                        self.live = true
+                        self.connectionPhase = .live
+                        failures = 0
+                        received = true
                     }
                     guard received else { throw ConnectionError.unexpectedResponse }
                     failures = 0
                     // Normal short-lease renewal is not a failed connection.
                     try await Task.sleep(nanoseconds: 200_000_000)
                 } else {
+                    sampleInterval = max(5, interval)
                     await refresh()
-                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    if let failure = refreshFailure { throw failure }
+                    connectionPhase = .polling
+                    failures = 0
+                    try await Task.sleep(nanoseconds: UInt64(sampleInterval) * 1_000_000_000)
                 }
             } catch {
-                guard !Task.isCancelled, generation == revision else { return }
+                guard !Task.isCancelled, generation == revision, readEpoch == epoch else { return }
                 live = false
+                if ConnectionPolicy.blocksAutomaticRetry(error) {
+                    connectionPhase = .blocked
+                    self.error = error.localizedDescription
+                    return
+                }
+                connectionPhase = .retrying
                 failures = min(failures + 1, 5)
                 // Back off before diagnostics/fallback too: never create request storms.
-                do { try await Task.sleep(nanoseconds: UInt64(min(30, 1 << failures)) * 1_000_000_000) }
+                let delay = ConnectionPolicy.retryDelay(failures: failures, jitter: Double.random(in: 0...1))
+                do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
                 catch { return }
-                await refresh()
+                if stale { await refresh() }
             }
         }
     }
@@ -271,21 +362,16 @@ final class BoardStore: ObservableObject {
     }
 
     func act(service: BoardService, action: String) async {
-        guard canControl, service.controllable, ["start", "stop", "restart"].contains(action),
+        guard serviceActionAllowed(service, action: action),
               service.id.range(of: "^[a-z-]+$", options: .regularExpression) != nil,
-              let client else { return }
-        operating = true
-        let revision = generation
-        defer { operating = false }
-        do {
-            let result: Accepted = try await client.post("services/\(service.id)/actions", body: ["action": action])
-            guard revision == generation else { return }
-            notice = result.accepted ? "操作已受理，实际结果请查看刷新后的服务状态。" : "操作未被受理。"
-        } catch {
-            guard revision == generation else { return }
-            notice = "操作结果可能尚未确认，请先刷新，不要连续重试。\(error.localizedDescription)"
-        }
-        await refresh()
+              client != nil else { return }
+        await manage("services/\(service.id)/actions", body: ["action": action], kind: "service", target: service.id)
+    }
+
+    func serviceActionAllowed(_ service: BoardService, action: String) -> Bool {
+        guard canControl, let current = services.first(where: { $0.id == service.id }), current.controllable else { return false }
+        return action == "start" ? ["inactive", "failed"].contains(current.state)
+            : ["stop", "restart"].contains(action) && ["active", "reloading"].contains(current.state)
     }
 
     func reboot() async {
@@ -307,41 +393,96 @@ final class BoardStore: ObservableObject {
               led.id.range(of: "^[A-Za-z0-9:_-]{1,80}$", options: .regularExpression) != nil,
               ["on", "off", "system"].contains(mode) else { return }
         operatingLEDID = led.id
-        defer { operatingLEDID = nil }
-        await manage("leds/\(led.id)/actions", body: ["mode": mode], ledID: led.id)
+        let revision = generation
+        defer { if revision == generation { operatingLEDID = nil } }
+        await manage("leds/\(led.id)/actions", body: ["mode": mode], kind: "led", target: led.id)
     }
 
     func act(container: BoardContainer, action: String) async {
-        guard managementReady, capabilities?.dockerControl == true, container.controllable,
-              management?.containers.contains(where: { $0.id == container.id }) == true,
+        guard containerActionAllowed(container, action: action),
               container.id.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
               ["start", "stop", "restart"].contains(action) else { return }
-        await manage("containers/\(container.id)/actions", body: ["action": action])
+        await manage("containers/\(container.id)/actions", body: ["action": action], kind: "container", target: container.id)
     }
 
-    private func manage(_ path: String, body: [String: String], ledID: String? = nil) async {
+    func containerActionAllowed(_ container: BoardContainer, action: String) -> Bool {
+        guard managementReady, !controlsCoolingDown, capabilities?.dockerControl == true,
+              let current = management?.containers.first(where: { $0.id == container.id }), current.controllable else { return false }
+        return action == "start" ? ["created", "exited"].contains(current.state)
+            : ["stop", "restart"].contains(action) && current.state == "running"
+    }
+
+    private func manage(_ path: String, body: [String: String], kind: String, target: String) async {
         guard let client else { return }
         operating = true
         notice = nil
         let revision = generation
-        defer { operating = false }
+        let action = body["action"] ?? body["mode"] ?? ""
+        let baseline = kind == "service" ? servicesSampledAt : management?.sampledAt
+        operation = ControlOperation(kind: kind, target: target, action: action, phase: .sending, message: "正在发送操作…")
+        let lease = ControlBackgroundLease { [weak client] in client?.cancelControls() }
+        defer { lease.finish(); if revision == generation { operating = false } }
+        if kind != "led" {
+            controlCooldownUntil = Date().addingTimeInterval(10)
+            cooldownTask?.cancel()
+            cooldownTask = Task { [weak self] in
+                do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
+                guard let self, self.generation == revision else { return }
+                self.objectWillChange.send()
+            }
+        }
         do {
             let result: Accepted = try await client.post(path, body: body)
             guard revision == generation else { return }
-            if result.accepted, let ledID, let readback = result.led,
-               readback.id == ledID, readback.valid {
-                ledReadbacks[ledID] = (readback, Date())
+            guard result.accepted else {
+                operation?.phase = .rejected
+                operation?.message = "设备未接受操作，请检查权限与服务状态。"
+                notice = operation?.message
+                return
+            }
+            if kind == "led", let readback = result.led, readback.id == target, readback.valid {
+                ledReadbacks[target] = (readback, Date())
                 management = management?.applying([readback])
+                operation?.phase = .confirmed
+                operation?.message = "指示灯状态已确认。"
                 notice = "指示灯状态已确认。"
                 return
             }
-            notice = result.accepted ? "操作已执行，正在刷新实际状态。" : "操作未执行，请检查权限。"
+            operation?.phase = .confirming
+            operation?.message = "请求已受理，等待设备状态确认…"
+            let deadline = Date().addingTimeInterval(18)
+            for delay in confirmationDelays {
+                if delay > 0 { try await Task.sleep(nanoseconds: delay * 1_000_000_000) }
+                guard revision == generation else { return }
+                if lease.expired || Task.isCancelled || Date() >= deadline { break }
+                if let bundle: DashboardSnapshot = try? await client.get("snapshot", timeout: min(3, deadline.timeIntervalSinceNow)) {
+                    guard revision == generation, !lease.expired else { break }
+                    try apply(bundle)
+                }
+                if controlStateMatches(kind: kind, target: target, action: action, baseline: baseline) {
+                    operation?.phase = .confirmed
+                    operation?.message = action == "restart" ? "重启请求已受理，当前运行状态已确认。" : "设备实际状态已确认。"
+                    notice = operation?.message
+                    return
+                }
+            }
+            operation?.phase = .uncertain
+            operation?.message = "请求已受理，尚未确认最终状态。请刷新检查，不要重复提交。"
         } catch {
             guard revision == generation else { return }
-            notice = "操作结果未确认，请刷新后检查，不要连续重试。\(error.localizedDescription)"
+            operation?.phase = .uncertain
+            operation?.message = "操作结果未确认，请刷新检查，不会自动重发。\(error.localizedDescription)"
         }
-        if ledID != nil { return }
-        await refresh()
+        if revision == generation { notice = operation?.message }
+    }
+
+    private func controlStateMatches(kind: String, target: String, action: String, baseline: String?) -> Bool {
+        if kind == "service" {
+            return servicesSampledAt != baseline && services.first(where: { $0.id == target })?.state == (action == "stop" ? "inactive" : "active")
+        }
+        guard let management, management.sampledAt != baseline else { return false }
+        if kind == "led" { return management.leds.first(where: { $0.id == target })?.mode == action }
+        return management.containers.first(where: { $0.id == target })?.state == (action == "stop" ? "exited" : "running")
     }
 
     func events(for service: BoardService) async throws -> [ServiceEvent] {
@@ -351,6 +492,28 @@ final class BoardStore: ObservableObject {
         }
         let result: ServiceEvents = try await client.get("services/\(service.id)/logs")
         return result.events.reversed()
+    }
+}
+
+/// Only user-initiated controls receive a finite background grace period.
+@MainActor
+private final class ControlBackgroundLease {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+    private(set) var expired = false
+    init(onExpire: @escaping () -> Void) {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "CoreNest control") { [weak self] in
+            Task { @MainActor in
+                guard let self, self.identifier != .invalid else { return }
+                self.expired = true
+                onExpire()
+                self.finish()
+            }
+        }
+    }
+    func finish() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
     }
 }
 

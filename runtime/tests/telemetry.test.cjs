@@ -53,3 +53,18 @@ test('plots use source time, split outages/missing data and keep points inside t
   assert.equal(result.last.y, 0);
   assert.ok(result.path.startsWith('M277.50,50.00'));
 });
+
+test('intentional low-power cadence connects real points but still splits missed samples', () => {
+  const points = [0, 15, 30, 75].map(t => ({ t: t * 1000, cpu: 50 }));
+  const result = plot(points, 'cpu', 100, 300, 100, 15);
+  assert.equal((result.path.match(/L/g) || []).length, 2);
+  assert.equal((result.path.match(/M/g) || []).length, 2);
+  assert.equal((plot(points, 'cpu', 100, 300, 100).path.match(/L/g) || []).length, 0);
+});
+
+test('switching to economy does not erase a real outage from earlier samples', () => {
+  const points = [{ t: 0, cpu: 50, interval: 1 }, { t: 20000, cpu: 50, interval: 15 }, { t: 35000, cpu: 50, interval: 15 }];
+  const result = plot(points, 'cpu', 100, 300, 100, 15);
+  assert.equal((result.path.match(/M/g) || []).length, 2);
+  assert.equal((result.path.match(/L/g) || []).length, 1);
+});

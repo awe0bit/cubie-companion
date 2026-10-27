@@ -42,6 +42,28 @@ class RealtimeTests(unittest.TestCase):
         d, fourth = self.open()
         self.assertEqual(d['status'], 200)
 
+    def test_adaptive_cadence_is_bounded_and_legacy_lease_is_preserved(self):
+        response, legacy = self.open()
+        self.assertEqual((legacy.duration, legacy.interval), (12, 1))
+        legacy.close()
+        for value in ['1', '5', '15']:
+            response, stream = self.open(HTTP_X_CORENEST_INTERVAL=value)
+            self.assertEqual(response['status'], 200)
+            self.assertEqual((stream.duration, stream.interval), (90, int(value)))
+            stream.close()
+        for value in ['0', '2', '60', '-1', '1.0', 'x', '1,5']:
+            response, stream = self.open(HTTP_X_CORENEST_INTERVAL=value)
+            self.assertEqual(response['status'], 400)
+
+    def test_slow_stream_still_releases_revoked_or_disconnected_clients_promptly(self):
+        response, stream = self.open(HTTP_X_CORENEST_INTERVAL='15')
+        iterator = iter(stream); next(iterator)
+        with patch.object(self.app, 'role', side_effect=ValueError()), patch('realtime.time.sleep') as sleep:
+            self.assertIn(b'unavailable', next(iterator))
+            self.assertEqual(list(iterator), [])
+            sleep.assert_called_once_with(1)
+        self.assertTrue(stream.closed)
+
     def test_initial_event_is_viewer_filtered_json_and_unbuffered(self):
         response, stream = self.open()
         value = next(iter(stream))

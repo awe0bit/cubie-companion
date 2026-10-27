@@ -206,6 +206,13 @@ final class CoreNestUITests: XCTestCase {
         app.buttons["settings-connection"].tap()
         XCTAssertTrue(app.navigationBars["数据连接"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["曲线采样"].exists)
+        let economy = app.switches["connection-economy"]
+        XCTAssertTrue(economy.isHittable)
+        let previous = economy.value as? String
+        economy.tap()
+        XCTAssertNotEqual(economy.value as? String, previous)
+        economy.tap()
+        XCTAssertEqual(economy.value as? String, previous)
         app.buttons["settings-network"].tap()
         XCTAssertTrue(app.navigationBars["网络"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["demo-network"].exists)

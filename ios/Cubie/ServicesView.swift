@@ -86,13 +86,25 @@ struct ServiceDetailView: View {
                         ForEach(["start", "restart", "stop"], id: \.self) { verb in
                             Button(actions[verb] ?? verb, role: verb == "stop" ? .destructive : nil) {
                                 pendingAction = verb
-                            }.disabled(!store.canControl)
+                            }.disabled(!store.serviceActionAllowed(service, action: verb))
+                                .accessibilityIdentifier("service-action-\(verb)")
                         }
                     }
+                    if store.controlsCoolingDown {
+                        Text("操作间隔保护中，请稍候。启动、停止与重启共用 10 秒冷却。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if store.stale || store.error != nil {
+                        Text("连接状态尚未确认，操作已暂停。请恢复连接后重试。")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
                 } else {
-                    Text(store.demo ? "示例服务，不会操作真实设备。" : "此连接仅提供系统服务状态。")
+                    Text(store.demo ? "示例服务，不会操作真实设备。"
+                         : !service.controllable ? "此服务受保护，不能从 App 启停。"
+                         : store.capabilities?.role != "admin" ? "当前绑定为只读，需要主板端授予管理权限。"
+                         : "主板尚未启用系统服务控制，或控制组件暂不可用。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                OperationFeedback(kind: "service", target: service.id)
                 if !store.demo {
                     Button {
                         Task { await store.refresh(manual: true) }

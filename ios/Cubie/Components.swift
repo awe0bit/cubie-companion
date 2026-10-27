@@ -1,5 +1,27 @@
 import SwiftUI
 
+struct OperationFeedback: View {
+    @EnvironmentObject private var store: BoardStore
+    let kind: String
+    let target: String
+
+    var body: some View {
+        if let operation = store.operation, operation.kind == kind, operation.target == target {
+            HStack(alignment: .top, spacing: 8) {
+                if operation.busy { ProgressView().controlSize(.small) }
+                else {
+                    Image(systemName: operation.phase == .confirmed ? "checkmark.circle.fill" : "exclamationmark.circle")
+                        .foregroundStyle(operation.phase == .confirmed ? Color.green : Color.orange)
+                }
+                Text(operation.message).font(.subheadline)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("control-feedback")
+            .accessibilityLabel(operation.message)
+        }
+    }
+}
+
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {

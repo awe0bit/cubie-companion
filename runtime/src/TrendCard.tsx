@@ -8,7 +8,7 @@ import { Dashboard, Metric, plot } from './telemetry';
 const metrics: { key: Metric; title: string }[] = [
   { key: 'cpu', title: 'CPU' }, { key: 'temperature', title: '温度' }, { key: 'memory', title: '内存' }, { key: 'network', title: '网络' },
 ];
-export function TrendCard({ data, dark, demo, stale, largeText }: { data: Dashboard; dark: boolean; demo: boolean; stale: boolean; largeText: boolean }) {
+export function TrendCard({ data, dark, demo, stale, largeText, sampleInterval = 1 }: { data: Dashboard; dark: boolean; demo: boolean; stale: boolean; largeText: boolean; sampleInterval?: number }) {
   const [metric, setMetric] = useState<Metric>('cpu');
   const colors = palette(dark);
   const latest = data.reading;
@@ -25,7 +25,7 @@ export function TrendCard({ data, dark, demo, stale, largeText }: { data: Dashbo
   return <View testID="performance-trend" style={[styles.card, { backgroundColor: colors.surface }]}>
     <View style={styles.heading}>
       <View style={{ gap: 3, flex: 1 }}><Text style={{ color: colors.ink, fontSize: 15, fontWeight: '600' }}>性能趋势</Text>
-        <Text style={{ color: colors.quiet, fontSize: 11 }}>近 2 分钟{stale ? ' · 数据已暂停' : ''}</Text></View>
+        <Text style={{ color: colors.quiet, fontSize: 11 }}>近 2 分钟{stale ? ' · 数据已暂停' : !demo && sampleInterval > 1 ? ` · 每 ${sampleInterval} 秒` : ''}</Text></View>
       <Text testID="trend-value" style={{ color: colors.ink, fontSize: 24, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
     </View>
     <View style={styles.selectors}>{metrics.map(item => <Pressable key={item.key} testID={`trend-${item.key}`}
@@ -38,7 +38,7 @@ export function TrendCard({ data, dark, demo, stale, largeText }: { data: Dashbo
         <View style={{ flex: 1 }}><Svg width="100%" height={height + 8} viewBox={`-3 -4 ${width + 6} ${height + 8}`} preserveAspectRatio="none">
           {[0, height / 2, height].map(y => <Line key={y} x1={0} x2={width} y1={y} y2={y} stroke={colors.separator} strokeWidth={.6} strokeDasharray="3 4" />)}
           {series.map((key, index) => {
-            const line = plot(data.points, key, maximum, width, height);
+            const line = plot(data.points, key, maximum, width, height, sampleInterval);
             const color = index === 0 ? colors.accent : colors.success;
             return <React.Fragment key={key}><Path d={line.path} stroke={color} strokeWidth={1.8} fill="none" strokeLinejoin="round" strokeLinecap="round" />
               {line.last && <Circle cx={line.last.x} cy={line.last.y} r={2.2} fill={color} />}</React.Fragment>;
