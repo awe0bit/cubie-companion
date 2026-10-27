@@ -20,6 +20,7 @@ final class BoardStore: ObservableObject {
     @Published private(set) var refreshing = false
     @Published private(set) var userRefreshing = false
     @Published private(set) var operating = false
+    @Published private(set) var operatingLEDID: String?
     @Published var error: String?
     @Published var notice: String?
     private var client: APIClient?
@@ -66,6 +67,7 @@ final class BoardStore: ObservableObject {
         refreshTask = nil
         refreshing = false
         userRefreshing = false
+        operatingLEDID = nil
         bundleUnsupported = false
         ledReadbacks.removeAll()
         demo = true
@@ -102,6 +104,7 @@ final class BoardStore: ObservableObject {
         refreshTask = nil
         refreshing = false
         userRefreshing = false
+        operatingLEDID = nil
         bundleUnsupported = false
         ledReadbacks.removeAll()
         client = candidate
@@ -252,6 +255,8 @@ final class BoardStore: ObservableObject {
               management?.leds.contains(where: { $0.id == led.id }) == true,
               led.id.range(of: "^[A-Za-z0-9:_-]{1,80}$", options: .regularExpression) != nil,
               ["on", "off", "system"].contains(mode) else { return }
+        operatingLEDID = led.id
+        defer { operatingLEDID = nil }
         await manage("leds/\(led.id)/actions", body: ["mode": mode], ledID: led.id)
     }
 
@@ -266,6 +271,7 @@ final class BoardStore: ObservableObject {
     private func manage(_ path: String, body: [String: String], ledID: String? = nil) async {
         guard let client else { return }
         operating = true
+        notice = nil
         let revision = generation
         defer { operating = false }
         do {

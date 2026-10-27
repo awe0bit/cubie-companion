@@ -57,6 +57,7 @@ def main():
             else: raise AssertionError("container_not_ready")
             request("/v1/status", status=401)
             request("/v1/devices", status=401)
+            request("/v1/snapshot", status=401)
             grant_data = json.loads(docker("exec", name, "python", "/app/pairing.py", "create", "--endpoint", "https://ci.example.com"))
             from urllib.parse import parse_qs
             values = parse_qs(grant_data["fragment"])
@@ -73,6 +74,10 @@ def main():
             assert caps["role"] == "viewer" and not caps["serviceControl"]
             assert caps["deviceInventory"]
             assert request("/v1/devices", auth="Bearer " + token)["board"]["model"] == "CI fixture"
+            bundle = request('/v1/snapshot', auth='Bearer ' + token)
+            assert bundle['capabilities']['snapshotBundle'] and bundle['capabilities']['role'] == 'viewer'
+            assert bundle['status']['hostname'] == 'ci-host-fixture-not-measurement'
+            assert bundle['inventory']['board']['model'] == 'CI fixture'
             docker("restart", name)
             # Docker can allocate a new ephemeral host port on restart; credentials stay in the volume.
             base = "http://" + docker("port", name, "18766/tcp")

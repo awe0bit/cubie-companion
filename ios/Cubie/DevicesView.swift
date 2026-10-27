@@ -96,7 +96,12 @@ struct DeviceControlsView: View {
                         HStack {
                             Label(led.name, systemImage: "lightbulb").font(.subheadline.weight(.medium))
                             Spacer()
-                            Text(led.modeText).font(.caption).foregroundStyle(.secondary)
+                            if store.operatingLEDID == led.id {
+                                ProgressView().controlSize(.mini)
+                                Text("正在确认").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text(led.modeText).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                         if !store.demo && store.capabilities?.ledControl == true && led.controllable {
                             HStack {
