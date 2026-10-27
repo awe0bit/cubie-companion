@@ -75,6 +75,13 @@ class BrandTests(unittest.TestCase):
         self.assertIn('.systemGroupedBackground',source)
         self.assertIn('NetworkView()',source)
 
+    def test_hidden_runtime_roots_do_not_reserialize_snapshot_props(self):
+        source=(ROOT/'ios/Cubie/RuntimeHost.swift').read_text(encoding='utf-8')
+        self.assertIn('visibleClients.intersection(readyClients)',source)
+        self.assertIn('"snapshotJSON": initialSnapshot',source)
+        self.assertIn('if initialSnapshot == nil',source)
+        self.assertNotIn('"snapshotJSON": RuntimeBridge.json(store)',source)
+
     def test_prominent_button_theme_contrast(self):
         colors=json.loads((ROOT/'ios/Cubie/Assets.xcassets/AccentColor.colorset/Contents.json').read_text())['colors']
         def luminance(components):

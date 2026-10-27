@@ -183,6 +183,7 @@ struct RuntimeScreen: View {
     @State private var searchQuery = ""
     @State private var serviceFilter = "全部"
     @State private var showSearch = false
+    @State private var initialSnapshot: String?
     let route: RuntimeRoute
     private var ready: Bool { bridge.readyClients.contains(client) }
 
@@ -194,12 +195,12 @@ struct RuntimeScreen: View {
         Group {
             if fallback {
                 nativeFallback
-            } else {
+            } else if let initialSnapshot {
                 GeometryReader { geometry in
                   ZStack {
                     ReactNativeView(moduleName: "main", initialProps: [
                         "route": route.rawValue, "client": client,
-                        "snapshotJSON": RuntimeBridge.json(store),
+                        "snapshotJSON": initialSnapshot,
                         "appearance": LaunchMode.argument(after: "--preview-appearance") ?? "system",
                         "disableRemoteUpdates": LaunchMode.isUITesting,
                         "bottomInset": geometry.safeAreaInsets.bottom,
@@ -215,7 +216,7 @@ struct RuntimeScreen: View {
                     }
                   }
                 }
-            }
+            } else { ProgressView("正在载入界面") }
         }
         .background(Surface.canvas.ignoresSafeArea())
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
@@ -292,7 +293,13 @@ struct RuntimeScreen: View {
             default: AboutView()
             }
         }
-        .onAppear { bridge.connect(store); bridge.setVisible(client, true) }
+        .onAppear {
+            // Seed each native root once. Live data uses targeted messages; hidden
+            // roots must not repeatedly serialize all telemetry through initialProps.
+            if initialSnapshot == nil { initialSnapshot = RuntimeBridge.json(store) }
+            bridge.connect(store)
+            bridge.setVisible(client, true)
+        }
         .onDisappear { bridge.setVisible(client, false); if route == .developer { bridge.retire(client) } }
         .onReceive(NotificationCenter.default.publisher(for: .runtimeAction)) { event in
             guard let message = event.userInfo, message["client"] as? String == client,

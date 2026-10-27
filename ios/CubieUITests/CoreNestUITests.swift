@@ -209,10 +209,14 @@ final class CoreNestUITests: XCTestCase {
         let economy = app.switches["connection-economy"]
         XCTAssertTrue(economy.isHittable)
         let previous = economy.value as? String
-        economy.tap()
-        XCTAssertNotEqual(economy.value as? String, previous)
-        economy.tap()
-        XCTAssertEqual(economy.value as? String, previous)
+        // SwiftUI exposes the entire labeled row as a switch on some runtimes.
+        // Hit the actual trailing switch and allow AppStorage to propagate.
+        economy.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", previous ?? "0"), object: economy)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 4), .completed)
+        economy.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let restored = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", previous ?? "0"), object: economy)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 4), .completed)
         app.buttons["settings-network"].tap()
         XCTAssertTrue(app.navigationBars["网络"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["demo-network"].exists)
