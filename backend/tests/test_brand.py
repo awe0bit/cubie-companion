@@ -62,6 +62,19 @@ class BrandTests(unittest.TestCase):
         self.assertIn('if let rpm = board.fanRPM',overview)
         self.assertNotIn('历史曲线和通知',overview)
 
+    def test_settings_root_contains_only_grouped_navigation_entries(self):
+        source=(ROOT/'ios/Cubie/SettingsView.swift').read_text(encoding='utf-8')
+        root=source.split('private struct SettingsRow:')[0]
+        self.assertEqual(root.count('NavigationLink'),4)
+        for identifier in ('settings-binding','settings-connection','settings-updates','settings-privacy'):
+            self.assertIn(identifier,root)
+        self.assertNotIn('LabeledContent(',root)
+        self.assertNotIn('.font(.caption)',root)
+        self.assertIn('.listStyle(.insetGrouped)',source)
+        self.assertIn('typeSize.isAccessibilitySize',source)
+        self.assertIn('.systemGroupedBackground',source)
+        self.assertIn('NetworkView()',source)
+
     def test_prominent_button_theme_contrast(self):
         colors=json.loads((ROOT/'ios/Cubie/Assets.xcassets/AccentColor.colorset/Contents.json').read_text())['colors']
         def luminance(components):

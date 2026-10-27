@@ -40,7 +40,7 @@ def main():
         time.sleep(10)
         call('io',args.device,'screenshot',str(args.output/('welcome-'+appearance+'.png')))
     call('terminate',args.device,BUNDLE,check=False)
-    call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','devices','--preview-detail','binding','--preview-appearance','light',
+    call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','settings','--preview-appearance','light',
          '-UIPreferredContentSizeCategoryName','UICTContentSizeCategoryAccessibilityXXXL')
     time.sleep(10)
     call('io',args.device,'screenshot',str(args.output/'settings-accessibility.png'))

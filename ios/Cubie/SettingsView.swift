@@ -1,35 +1,143 @@
 import SwiftUI
 
-/// Native tab: no second custom navigation bar, no editable credential fields.
+/// A system grouped list; explanations live in their corresponding detail pages.
 struct AppSettingsView: View {
     @EnvironmentObject private var store: BoardStore
     var body: some View {
         List {
-            Section("连接") {
+            Section("设备连接") {
                 NavigationLink { SettingsView() } label: {
-                    Label(store.demo ? "扫码绑定开发板" : "管理扫码绑定", systemImage: "qrcode.viewfinder")
+                    SettingsRow("设备绑定", symbol: "qrcode", color: .blue,
+                                value: store.demo ? "未绑定" : "已绑定")
                 }.accessibilityIdentifier("settings-binding")
-                LabeledContent("数据连接", value: store.demo ? "演示数据" : store.live ? "实时推送" : store.stale ? "连接中断" : "正在重连")
-                if !store.demo, let status = store.status {
-                    LabeledContent("当前设备", value: status.hostname)
-                }
-                Text("曲线每秒采样，数字每 5 秒更新；切到后台后停止连接。趋势仅保留本次会话最近 2 分钟，不生成缺失数据。")
-                    .font(.caption).foregroundStyle(.secondary)
+                NavigationLink { ConnectionSettingsView() } label: {
+                    SettingsRow("数据连接", symbol: "antenna.radiowaves.left.and.right", color: .green,
+                                value: connectionState(store))
+                }.accessibilityIdentifier("settings-connection")
             }
             Section("应用") {
                 NavigationLink { AboutView() } label: {
-                    Label("关于与更新", systemImage: "arrow.triangle.2.circlepath")
+                    SettingsRow("关于与更新", symbol: "gearshape.fill", color: .gray, value: Brand.version)
                 }.accessibilityIdentifier("settings-updates")
-                LabeledContent("版本", value: "\(Brand.version) (\(Brand.build))")
-            }
-            Section {
-                Label("连接凭据仅保存于本机钥匙串", systemImage: "lock.shield")
-                Text("外观跟随系统；搜索与筛选在服务页右上角和左上角。")
-                    .font(.caption).foregroundStyle(.secondary)
+                NavigationLink { PrivacySettingsView() } label: {
+                    SettingsRow("隐私与安全", symbol: "hand.raised.fill", color: .blue)
+                }.accessibilityIdentifier("settings-privacy")
             }
         }
-        .navigationTitle("设置").navigationBarTitleDisplayMode(.inline)
-        .scrollContentBackground(.hidden).background(Surface.canvas)
+        .modifier(SettingsListStyle())
+        .navigationTitle("设置").navigationBarTitleDisplayMode(.large)
+    }
+}
+
+private struct SettingsRow: View {
+    let title: String
+    let symbol: String
+    let color: Color
+    var value: String?
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    init(_ title: String, symbol: String, color: Color, value: String? = nil) {
+        self.title = title
+        self.symbol = symbol
+        self.color = color
+        self.value = value
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(color, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .accessibilityHidden(true)
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).foregroundStyle(.primary)
+                    if let value { Text(value).foregroundStyle(.secondary).font(.subheadline) }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            } else {
+                Text(title).foregroundStyle(.primary).layoutPriority(1)
+                Spacer(minLength: 8)
+                if let value { Text(value).foregroundStyle(.secondary).lineLimit(1) }
+            }
+        }
+        .font(.body)
+        .padding(.vertical, 3)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 40 }
+    }
+}
+
+private struct SettingsListStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .listStyle(.insetGrouped)
+            .environment(\.defaultMinListRowHeight, 48)
+            .listSectionSpacing(24)
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
+    }
+}
+
+@MainActor
+private func connectionState(_ store: BoardStore) -> String {
+    store.demo ? "演示模式" : store.live ? "实时推送" : store.stale ? "已中断" : "连接中"
+}
+
+private struct ConnectionSettingsView: View {
+    @EnvironmentObject private var store: BoardStore
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("连接状态", value: connectionState(store))
+                if !store.demo, let status = store.status {
+                    LabeledContent("当前设备", value: status.hostname)
+                }
+                NavigationLink { NetworkView() } label: {
+                    Label("网络详情", systemImage: "wifi")
+                }.accessibilityIdentifier("settings-network")
+            } footer: {
+                Text("仅在应用前台接收数据，切到后台后暂停连接。")
+            }
+            Section {
+                LabeledContent("曲线采样", value: "每秒")
+                LabeledContent("数字更新", value: "每 5 秒")
+                LabeledContent("趋势保留", value: "最近 2 分钟")
+            } header: {
+                Text("实时数据")
+            } footer: {
+                Text("趋势仅保留本次会话的数据；连接中断时保留缺口，不补造数据。")
+            }
+        }
+        .modifier(SettingsListStyle())
+        .navigationTitle("数据连接").navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct PrivacySettingsView: View {
+    var body: some View {
+        List {
+            Section {
+                Label("凭据保存在本机钥匙串", systemImage: "key.fill")
+            } header: {
+                Text("设备凭据")
+            } footer: {
+                Text("解除绑定会删除这台 iPhone 上的凭据，不影响主板运行。手机丢失后仍需在服务端撤销授权。")
+            }
+            Section {
+                Label("不含广告与第三方统计 SDK", systemImage: "hand.raised.fill")
+                Label("只在前台接收设备数据", systemImage: "pause.circle.fill")
+            } header: {
+                Text("数据使用")
+            } footer: {
+                Text("远程连接经过你配置的 Cloudflare 服务。")
+            }
+        }
+        .modifier(SettingsListStyle())
+        .navigationTitle("隐私与安全").navigationBarTitleDisplayMode(.inline)
     }
 }
 

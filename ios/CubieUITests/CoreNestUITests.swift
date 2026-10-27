@@ -194,6 +194,48 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["关于栖核"].waitForExistence(timeout: 5))
     }
 
+    func testSettingsGroupsHaveWorkingConnectionAndPrivacyDetails() {
+        let app = launch(appearance: "dark")
+        explore(app)
+        app.tabBars.buttons["设置"].tap()
+        for identifier in ["settings-binding", "settings-connection", "settings-updates", "settings-privacy"] {
+            XCTAssertTrue(app.buttons[identifier].isHittable)
+        }
+        XCTAssertFalse(app.staticTexts["版本"].exists, "Version belongs in the update row, not a redundant row")
+        snapshot("settings-grouped-dark")
+        app.buttons["settings-connection"].tap()
+        XCTAssertTrue(app.navigationBars["数据连接"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["曲线采样"].exists)
+        app.buttons["settings-network"].tap()
+        XCTAssertTrue(app.navigationBars["网络"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["demo-network"].exists)
+        app.navigationBars.buttons.firstMatch.tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["settings-privacy"].tap()
+        XCTAssertTrue(app.navigationBars["隐私与安全"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["凭据保存在本机钥匙串"].exists)
+        XCTAssertEqual(app.tabBars.count, 1)
+    }
+
+    func testSettingsAccessibilityRowsRemainReachable() {
+        let app = launch(largeText: true)
+        explore(app)
+        app.tabBars.buttons["设置"].tap()
+        let privacy = app.buttons["settings-privacy"]
+        reveal(privacy, app: app)
+        snapshot("settings-grouped-accessibility")
+        privacy.tap()
+        XCTAssertTrue(app.navigationBars["隐私与安全"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        let binding = app.buttons["settings-binding"]
+        // Returning from a detail preserves scroll position. Scroll back to the first group.
+        if !binding.isHittable { app.collectionViews.firstMatch.swipeDown() }
+        XCTAssertTrue(binding.isHittable)
+        binding.tap()
+        XCTAssertTrue(app.navigationBars["绑定"].waitForExistence(timeout: 5))
+        reveal(app.buttons["scan-pair"], app: app)
+    }
+
     func testServiceSearchFiltersAndDockerDetails() {
         let app = launch()
         explore(app)

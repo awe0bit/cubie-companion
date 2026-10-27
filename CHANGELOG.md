@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.2 — System-style settings
+
+- Replace oversized mixed-content Settings cards with two native inset-grouped
+  sections and four working entries: binding, live connection, updates and privacy.
+- Use consistent colored icon tiles, body typography, aligned separators and
+  system grouped backgrounds, with a large Settings title.
+- Move telemetry explanations and credential guidance into dedicated detail pages;
+  accessibility text sizes stack row values rather than shrinking or clipping them.
+- Preserve the single system tab bar, QR-only binding and Settings long-press tools.
+- This native Settings change requires one IPA update; OTA compatibility runtime
+  remains 0.9.0. No server or Docker deployment changes.
+
 ## 0.9.1 — Hidden developer tools and OTA-first delivery
 
 - Long-press the system Settings tab for 0.65 seconds to open developer tools,
