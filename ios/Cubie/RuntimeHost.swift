@@ -195,12 +195,12 @@ struct RuntimeScreen: View {
         Group {
             if fallback {
                 nativeFallback
-            } else if let initialSnapshot {
+            } else {
                 GeometryReader { geometry in
                   ZStack {
                     ReactNativeView(moduleName: "main", initialProps: [
                         "route": route.rawValue, "client": client,
-                        "snapshotJSON": initialSnapshot,
+                        "snapshotJSON": initialSnapshot ?? RuntimeBridge.json(store),
                         "appearance": LaunchMode.argument(after: "--preview-appearance") ?? "system",
                         "disableRemoteUpdates": LaunchMode.isUITesting,
                         "bottomInset": geometry.safeAreaInsets.bottom,
@@ -216,7 +216,7 @@ struct RuntimeScreen: View {
                     }
                   }
                 }
-            } else { ProgressView("正在载入界面") }
+            }
         }
         .background(Surface.canvas.ignoresSafeArea())
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
