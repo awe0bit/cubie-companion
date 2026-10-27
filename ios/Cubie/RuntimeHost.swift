@@ -21,7 +21,7 @@ extension Notification.Name {
 final class RuntimeBridge: ObservableObject {
     static let shared = RuntimeBridge()
     @Published private(set) var updateStage = "idle"
-    @Published private(set) var runtime = "0.8.0"
+    @Published private(set) var runtime = "0.9.0"
     @Published private(set) var channel = "not-configured"
     @Published private(set) var launchUpdateID = ""
     @Published private(set) var embeddedLaunch = true
@@ -55,7 +55,7 @@ final class RuntimeBridge: ObservableObject {
     static func snapshot(_ store: BoardStore) -> [String: Any] {
         var result: [String: Any] = [
             "demo": store.demo, "stale": store.stale, "refreshing": store.userRefreshing,
-            "refreshAcknowledgement": true, "live": store.live,
+            "refreshAcknowledgement": true, "live": store.live, "telemetrySession": store.telemetrySession,
             "inventoryStale": store.inventoryStale,
             "services": store.services.map { ["id": $0.id, "name": $0.name, "unit": $0.unit, "state": $0.state, "stateText": $0.stateText] },
         ]
@@ -148,6 +148,8 @@ struct RuntimeScreen: View {
     @State private var fallback = false
     @State private var destination: RuntimeDestination?
     @State private var searchQuery = ""
+    @State private var serviceFilter = "全部"
+    @State private var showSearch = false
     let route: AppTab
     private var ready: Bool { bridge.readyClients.contains(client) }
 
@@ -170,6 +172,8 @@ struct RuntimeScreen: View {
                         "bottomInset": geometry.safeAreaInsets.bottom,
                         "nativeSearch": route == .services,
                         "searchQuery": searchQuery,
+                        "nativeToolbar": true,
+                        "serviceFilter": serviceFilter,
                     ])
                     .ignoresSafeArea(.container, edges: .bottom)
                     if !ready {
@@ -182,7 +186,9 @@ struct RuntimeScreen: View {
         }
         .background(Surface.canvas.ignoresSafeArea())
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-        .modifier(ServiceSearch(enabled: route == .services, query: $searchQuery))
+        .sheet(isPresented: $showSearch) {
+            ServiceSearchPanel(query: $searchQuery, filter: serviceFilter)
+        }
         .onChange(of: searchQuery) { _, value in
             BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "search",
                                              "client": client, "query": String(value.prefix(128))])
@@ -191,20 +197,54 @@ struct RuntimeScreen: View {
             if value && route == .services {
                 BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "search",
                                                  "client": client, "query": String(searchQuery.prefix(128))])
+                sendFilter()
             }
         }
+        .onChange(of: serviceFilter) { _, _ in sendFilter() }
         .toolbar {
-            if route == .devices && !fallback {
+            if route == .overview {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { destination = .init(action: store.demo ? "open.binding" : "open.network", value: "") } label: {
+                        Label(store.demo ? "扫码绑定" : "网络连接", systemImage: store.demo ? "qrcode.viewfinder" : "wifi")
+                    }.accessibilityIdentifier(store.demo ? "overview-connect" : "network-details")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { destination = .init(action: "open.controls", value: "") } label: { Label("设备控制", systemImage: "slider.horizontal.3") }
+                            .accessibilityIdentifier("overview-controls")
+                        Button { destination = .init(action: "open.network", value: "") } label: { Label("网络连接", systemImage: "wifi") }
+                            .accessibilityIdentifier("network-details-menu")
+                        Button { Task { await store.refresh(manual: true) } } label: { Label("刷新状态", systemImage: "arrow.clockwise") }
+                    } label: { Label("快捷操作", systemImage: "ellipsis") }
+                    .accessibilityIdentifier("overview-actions")
+                }
+            }
+            if route == .services {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(["全部", "Docker", "系统"], id: \.self) { item in
+                            Button { serviceFilter = item } label: {
+                                if item == serviceFilter { Label(item, systemImage: "checkmark") } else { Text(item) }
+                            }.accessibilityIdentifier("service-filter-" + item)
+                        }
+                        if !searchQuery.isEmpty { Button("清除搜索") { searchQuery = "" } }
+                    } label: { Label("筛选服务", systemImage: "line.3.horizontal.decrease") }
+                    .accessibilityIdentifier("service-filter")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSearch = true } label: { Label("搜索服务", systemImage: "magnifyingglass") }
+                        .accessibilityIdentifier("service-search-button")
+                }
+            }
+            if route == .devices && !fallback {
+                ToolbarItem(placement: .topBarLeading) {
                     Button { destination = .init(action: "open.binding", value: "") } label: {
                         Label("扫码绑定", systemImage: "qrcode.viewfinder")
                     }.accessibilityIdentifier("device-binding")
                 }
-            }
-            if route == .overview {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink { AboutView() } label: { Label("关于与更新", systemImage: "info.circle") }
-                        .accessibilityIdentifier("app-about")
+                    Button { destination = .init(action: "open.controls", value: "") } label: { Label("设备控制", systemImage: "slider.horizontal.3") }
+                        .accessibilityIdentifier("device-controls")
                 }
             }
         }
@@ -235,6 +275,10 @@ struct RuntimeScreen: View {
         }
     }
 
+    private func sendFilter() {
+        BrownfieldMessaging.sendMessage(["type": "corenest.command", "command": "filter", "client": client, "query": serviceFilter])
+    }
+
     @ViewBuilder private var nativeFallback: some View {
         switch route {
         case .overview: OverviewView()
@@ -245,13 +289,55 @@ struct RuntimeScreen: View {
     }
 }
 
-private struct ServiceSearch: ViewModifier {
-    let enabled: Bool
+private struct ServiceSearchPanel: View {
+    @EnvironmentObject private var store: BoardStore
+    @Environment(\.dismiss) private var dismiss
     @Binding var query: String
-    @ViewBuilder func body(content: Content) -> some View {
-        if enabled {
-            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索服务")
-                .textInputAutocapitalization(.never).autocorrectionDisabled()
-        } else { content }
+    let filter: String
+    private func matches(_ values: [String]) -> Bool {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return term.isEmpty || values.contains { $0.localizedCaseInsensitiveContains(term) }
+    }
+    private var containers: [BoardContainer] {
+        filter == "系统" ? [] : (store.management?.containers ?? []).filter { matches([$0.name, $0.image]) }
+    }
+    private var services: [BoardService] {
+        filter == "Docker" ? [] : store.services.filter { matches([$0.name, $0.unit]) }
+    }
+    var body: some View {
+        NavigationStack {
+            List {
+                if !containers.isEmpty {
+                    Section("Docker") {
+                        ForEach(containers) { item in
+                            NavigationLink { ContainerDetailView(containerID: item.id) } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.name).font(.subheadline.weight(.semibold))
+                                    Text(item.image).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }.accessibilityIdentifier("search-container-" + item.id)
+                        }
+                    }
+                }
+                if !services.isEmpty {
+                    Section("系统") {
+                        ForEach(services) { item in
+                            NavigationLink { ServiceDetailView(serviceID: item.id) } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.name).font(.subheadline.weight(.semibold))
+                                    Text(item.unit).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }.accessibilityIdentifier("search-service-" + item.id)
+                        }
+                    }
+                }
+                if containers.isEmpty && services.isEmpty { Text("没有匹配的服务").foregroundStyle(.secondary) }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "名称、镜像或系统单元")
+            .textInputAutocapitalization(.never).autocorrectionDisabled()
+            .navigationTitle("搜索服务").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
+            .scrollContentBackground(.hidden).background(Surface.canvas)
+        }
     }
 }

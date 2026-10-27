@@ -20,6 +20,7 @@ final class BoardStore: ObservableObject {
     @Published private(set) var refreshing = false
     @Published private(set) var userRefreshing = false
     @Published private(set) var live = false
+    @Published private(set) var telemetrySession = UUID().uuidString
     @Published private(set) var operating = false
     @Published private(set) var operatingLEDID: String?
     @Published var error: String?
@@ -64,6 +65,7 @@ final class BoardStore: ObservableObject {
 
     func showDemo() {
         generation += 1
+        telemetrySession = UUID().uuidString
         refreshTask?.cancel()
         refreshTask = nil
         refreshing = false
@@ -102,6 +104,7 @@ final class BoardStore: ObservableObject {
         // Do not overwrite a working stored connection until authentication succeeds.
         try Keychain.save(bound)
         generation += 1
+        telemetrySession = UUID().uuidString
         refreshTask?.cancel()
         refreshTask = nil
         refreshing = false

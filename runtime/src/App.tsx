@@ -3,15 +3,17 @@ import { Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, Text
 import { send, subscribe } from './native';
 import { startUpdates } from './updates';
 import { ManualRefresh } from './refresh';
-import { RollingValue } from './RollingValue';
+import { TrendCard } from './TrendCard';
+import { telemetry } from './telemetry';
 import { layout, palette } from './theme';
 import { bytes, groupedServices, stateText } from './presentation';
 import type { Route, Snapshot } from './types';
 
-type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean; bottomInset?: number; nativeSearch?: boolean; searchQuery?: string };
-export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false, bottomInset = 0, nativeSearch = false, searchQuery = '' }: Props) {
+type Props = { route: Route; client: string; snapshotJSON: string; appearance?: 'light' | 'dark'; disableRemoteUpdates?: boolean; bottomInset?: number; nativeSearch?: boolean; searchQuery?: string; nativeToolbar?: boolean; serviceFilter?: string };
+export default function App({ route, client, snapshotJSON, appearance, disableRemoteUpdates = false, bottomInset = 0, nativeSearch = false, searchQuery = '', nativeToolbar = false, serviceFilter = '全部' }: Props) {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => JSON.parse(snapshotJSON));
-  const [filter, setFilter] = useState('全部');
+  const [dashboard, setDashboard] = useState(() => telemetry.accept(snapshot));
+  const [filter, setFilter] = useState(serviceFilter);
   const [query, setQuery] = useState(searchQuery);
   const [pulling, setPulling] = useState(false);
   const [refreshFeedback, setRefreshFeedback] = useState('');
@@ -19,15 +21,16 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   if (!manualRefresh.current) manualRefresh.current = new ManualRefresh(
     () => send(client, 'refresh'), (pulling, feedback) => { setPulling(pulling); setRefreshFeedback(feedback); });
   const system = useColorScheme();
-  const colors = palette((appearance === 'light' || appearance === 'dark' ? appearance : system) === 'dark');
+  const dark = (appearance === 'light' || appearance === 'dark' ? appearance : system) === 'dark';
+  const colors = palette(dark);
   const { width, fontScale } = useWindowDimensions();
   const narrow = fontScale > 1.4 || width < 350;
-  const columns = narrow ? 1 : width >= 375 && fontScale <= 1.15 ? 3 : 2;
   const act = (action: string, id?: string) => send(client, action, id);
   useEffect(() => {
     const unsubscribe = subscribe(message => {
       if (message.type === 'corenest.snapshot' && message.snapshot) {
         setSnapshot(message.snapshot);
+        setDashboard(telemetry.accept(message.snapshot));
         manualRefresh.current?.snapshot(message.snapshot.refreshing, message.snapshot.refreshAcknowledgement === true);
       }
       if (message.type === 'corenest.refresh' && message.client === client) {
@@ -35,6 +38,9 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       }
       if (message.command === 'search' && message.client === client && typeof message.query === 'string') {
         setQuery(message.query.slice(0, 128));
+      }
+      if (message.command === 'filter' && message.client === client && ['全部', 'Docker', '系统'].includes(message.query ?? '')) {
+        setFilter(message.query!);
       }
     });
     act('ready'); startUpdates(disableRemoteUpdates);
@@ -55,19 +61,18 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       <Text accessibilityElementsHidden style={{ color: colors.quiet, fontSize: 19 }}>›</Text>
     </Pressable>
   );
-  const metric = (title: string, value: string, detail = '', fraction?: number) => <View key={title} style={[styles.metric, { width: columns === 3 ? '33.333%' : columns === 2 ? '50%' : '100%' }]}>
+  const metric = (title: string, value: string, detail = '', fraction?: number) => <View key={title} style={[styles.metric, { width: narrow ? '100%' : '50%' }]}>
     {label(title, true, 12)}
-    <RollingValue value={value} color={colors.ink} />
+    <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
     {!!detail && label(detail, true, 11)}
     {fraction != null && <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.separator }}><View style={{ height: 3, borderRadius: 2, backgroundColor: fraction > .85 ? colors.warning : colors.accent, width: `${Math.max(0, Math.min(1, fraction)) * 100}%` }} /></View>}
   </View>;
-  const b = snapshot.status;
+  const b = dashboard.reading ?? snapshot.status;
   const hardware = snapshot.inventory;
   const managed = snapshot.management;
   const containers = managed?.containers ?? [];
   const groups = groupedServices(snapshot.services, containers, query, filter);
   const running = snapshot.services.filter(s => s.state === 'active').length + containers.filter(c => c.state === 'running').length;
-  const highest = b?.temperatures.length ? Math.max(...b.temperatures.map(t => t.celsius)) : undefined;
   return <ScrollView testID={`runtime-${route}`} style={{ flex: 1, backgroundColor: colors.background }}
     contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets
@@ -77,38 +82,28 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       <View accessibilityLabel={snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断，上次数据' : '已连接'} style={styles.banner}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: snapshot.stale ? colors.warning : snapshot.demo ? colors.quiet : colors.success }} />
-          {label(snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断 · 上次数据' : snapshot.live ? '实时推送 · 1 秒采样' : '等待实时连接', true, 11)}
+          {label(snapshot.demo ? '演示数据' : snapshot.stale ? '离线 · 保留上次数据' : snapshot.live ? '已连接' : '正在连接', true, 11)}
         </View>
-        {label('下拉刷新', true, 11)}
+        {route === 'overview' && label(`${running}/${snapshot.services.length + containers.length} 服务在线`, true, 11)}
       </View>
       {!!snapshot.error && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.error}</Text>}
-      {!!snapshot.notice && label(snapshot.notice, true, 12)}
       {!!refreshFeedback && <Text style={{ color: colors.warning, fontSize: 12 }}>{refreshFeedback}</Text>}
+      {route === 'overview' && snapshot.status?.temperatures.some(item => item.celsius >= 75) && <Text style={{ color: colors.warning, fontSize: 12 }}>温度偏高，请检查散热</Text>}
       {route === 'overview' && <>
-        {snapshot.demo && card(link('绑定开发板', '扫码查看真实状态', 'open.binding', 'overview-connect'), undefined, true)}
         {b ? <>
-          {card(<View style={[styles.board, narrow && { flexDirection: 'column', alignItems: 'flex-start' }]}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 18, fontWeight: '600' }}>{b.hostname}</Text>
-              {label(`Cubie A7S${b.uptimeSeconds != null ? ` · 运行 ${Math.floor(b.uptimeSeconds / 3600)}h ${Math.floor(b.uptimeSeconds % 3600 / 60)}m` : ''}`, true, 11)}
-            </View>
-            {highest != null && <View style={{ alignItems: 'flex-end', gap: 2 }}>
-              <RollingValue value={`${highest.toFixed(1)}°`} color={highest >= 75 ? colors.warning : colors.ink} size={28} />
-              {label(highest >= 75 ? '温度偏高' : '最高温度', true, 11)}
-            </View>}
-          </View>)}
+          <View style={{ gap: 4, paddingVertical: 3 }}>
+            <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 20, fontWeight: '600' }}>{b.hostname}</Text>
+            {label(`Cubie A7S${b.uptimeSeconds != null ? ` · 运行 ${Math.floor(b.uptimeSeconds / 3600)}h ${Math.floor(b.uptimeSeconds % 3600 / 60)}m` : ''}`, true, 12)}
+          </View>
+          <TrendCard data={dashboard} dark={dark} demo={snapshot.demo} stale={snapshot.stale} largeText={narrow} />
           {card(<View style={styles.metrics}>
-            {b.cpuPercent != null && metric('CPU', `${b.cpuPercent.toFixed(1)}%`, '', b.cpuPercent / 100)}
             {b.memoryUsedBytes != null && metric('内存', bytes(b.memoryUsedBytes), `共 ${bytes(b.memoryTotalBytes)}`, b.memoryTotalBytes ? b.memoryUsedBytes / b.memoryTotalBytes : undefined)}
             {b.diskUsedBytes != null && metric('存储', bytes(b.diskUsedBytes), `共 ${bytes(b.diskTotalBytes)}`, b.diskTotalBytes ? b.diskUsedBytes / b.diskTotalBytes : undefined)}
-            {b.rxBytesPerSecond != null && metric('下载 ↓', `${bytes(b.rxBytesPerSecond)}/s`)}
-            {b.txBytesPerSecond != null && metric('上传 ↑', `${bytes(b.txBytesPerSecond)}/s`)}
-            {metric('在线服务', `${running}/${snapshot.services.length + containers.length}`)}
             {b.powerWatts != null && metric('功耗', `${b.powerWatts.toFixed(1)} W`)}
             {b.fanRPM != null && metric('风扇', `${Math.round(b.fanRPM)} RPM`)}
           </View>, undefined, true)}
         </> : card(label('等待设备数据', true))}
-        {card(<>
+        {!nativeToolbar && card(<>
           {link('网络连接', snapshot.network?.campusText ?? '等待数据', 'open.network', 'network-details', undefined, 'Wi')}
           {separator}
           {link('设备控制', managed ? `${managed.leds.length} 个指示灯 · ${containers.length} 个容器` : '灯光与 Docker 管理', 'open.controls', 'overview-controls', undefined, '⌘')}
@@ -116,17 +111,17 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       </>}
       {route === 'services' && <>
         <View style={styles.heading}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}><RollingValue value={String(running)} color={colors.ink} /><Text style={{ color: colors.quiet, fontSize: 13 }}> / {snapshot.services.length + containers.length} 运行中</Text></View>
-          {label(`${containers.length} 个容器`, true, 12)}
+          {label(query ? `搜索“${query}”` : filter === '全部' ? '全部服务' : filter, false, 15)}
+          {label(`${groups.reduce((sum, group) => sum + group.items.length, 0)} 项`, true, 12)}
         </View>
         {!nativeSearch && <TextInput accessibilityLabel="搜索服务" testID="service-search" defaultValue="" onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
           placeholderTextColor={colors.quiet} clearButtonMode="while-editing" autoCorrect={false} autoCapitalize="none"
           returnKeyType="search" onSubmitEditing={Keyboard.dismiss}
           style={[styles.search, { color: colors.ink, backgroundColor: colors.surface }]} />}
-        <View style={styles.filters}>
+        {!nativeToolbar && <View style={styles.filters}>
           {['全部', 'Docker', '系统'].map(item => <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected: filter === item }} onPress={() => setFilter(item)}
             style={[styles.filter, { backgroundColor: filter === item ? colors.ink : colors.surface }]}><Text style={{ color: filter === item ? colors.surface : colors.quiet, fontSize: 12, fontWeight: '600' }}>{item}</Text></Pressable>)}
-        </View>
+        </View>}
         {!snapshot.demo && snapshot.managementError && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.managementError}</Text>}
         {groups.map(group => <View key={group.title} style={{ gap: 7 }}>
           <View style={styles.heading}>{label(group.title, true, 12)}{label(String(group.items.length), true, 11)}</View>
@@ -138,7 +133,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
         {!groups.length && card(label(query ? '没有匹配的服务' : '暂无服务数据', true))}
       </>}
       {route === 'devices' && <>
-        {card(link('灯光与设备控制', managed?.leds.length ? `${managed.leds.length} 个指示灯 · 支持恢复系统模式` : '查看管理权限与控制状态', 'open.controls', 'device-controls', undefined, '⌘'), undefined, true)}
+        {!nativeToolbar && card(link('灯光与设备控制', managed?.leds.length ? `${managed.leds.length} 个指示灯 · 支持恢复系统模式` : '查看管理权限与控制状态', 'open.controls', 'device-controls', undefined, '⌘'), undefined, true)}
         {hardware ? <>
           {card(<>
             <Text style={{ color: colors.ink, fontSize: 17, fontWeight: '600' }}>{b?.hostname ?? '开发板'}</Text>

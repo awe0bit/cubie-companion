@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0 — Calmer trends and focused navigation
+
+- Overview replaces rapidly changing digits with CPU, temperature, memory and
+  network trend tabs. Curves use one-second source samples; numeric readings
+  update every five seconds, without rolling animations.
+- Two-minute in-memory history deduplicates samples, splits missing/outage
+  segments and resets on binding changes. No history is fabricated for demos.
+- Native left/right toolbar actions replace persistent search/filter rows and
+  duplicate dashboard controls. Search opens an actual native results sheet.
+- Docker lives under Services, hardware/LEDs under Devices, updates under Settings.
+- Add the SDK-matched SVG renderer; native runtime 0.9.0 requires a new IPA.
+- CI pins Ubuntu 24.04 and verified Node 24 Action commits instead of deprecated
+  Node 20 Action revisions. macOS runner capacity remains outside app control.
+
 ## 0.8.0 — Live dashboard and native settings
 
 - Foreground authenticated SSE snapshots with one-second host performance sampling;

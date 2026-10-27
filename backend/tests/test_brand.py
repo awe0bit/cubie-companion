@@ -88,5 +88,17 @@ class BrandTests(unittest.TestCase):
         self.assertIn('$TEST_DEVICE_ID',workflow)
         self.assertIn('CoreNest-native-screenshots',workflow)
 
+    def test_ci_environment_is_explicit_and_deprecated_action_pins_are_gone(self):
+        workflows=[(ROOT/'.github/workflows'/name).read_text() for name in ('build-ios.yml','ios-ota.yml')]
+        for workflow in workflows:
+            self.assertNotIn('ubuntu-latest',workflow)
+            self.assertIn('ubuntu-24.04',workflow)
+        build=workflows[0]
+        for action in ['actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+                       'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333',
+                       'docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1',
+                       'docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069']:
+            self.assertIn(action,build)
+
 
 if __name__=='__main__':unittest.main()

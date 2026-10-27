@@ -27,3 +27,19 @@ The streaming, ordinary read and mutation URLSessions are separate.
 One-second sampling is not a guarantee of one-second end-to-end latency:
 campus network, Cloudflare and iPhone connectivity can add delay. Missing data
 is never synthesized. Screenshot/demo launch mode does not access a real board.
+
+## Presentation cadence (iOS 0.9.0)
+
+The UI keeps at most 121 source-timestamped points in memory for two minutes.
+Duplicate/older samples are ignored. Missing values and gaps over 3.5 seconds
+break a plotted line, not interpolate or backfill it. The displayed numeric
+reading advances only every five source seconds; curves still receive each
+sample. CPU/memory percentages and temperature use fixed scales, network rates
+share a scale between download/upload. Changing binding resets the window via
+a transient random session ID; endpoints and credentials never enter JS.
+
+Overview is metrics/trends only. Service search and filters are native toolbar
+actions; search opens a native sheet with actual filtered results and detail
+navigation. Devices has toolbar entries for QR binding and LED controls; Docker
+is managed from Services, updates from Settings. No permanent second search bar
+or duplicate dashboard control cards are introduced.

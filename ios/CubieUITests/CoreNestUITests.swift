@@ -47,7 +47,8 @@ final class CoreNestUITests: XCTestCase {
         snapshot("welcome-light")
         explore(app)
         XCTAssertTrue(app.buttons["overview-connect"].exists)
-        XCTAssertTrue(app.buttons["overview-controls"].isHittable, "Compact overview should expose controls without scrolling")
+        XCTAssertTrue(app.buttons["overview-actions"].isHittable)
+        XCTAssertTrue(app.descendants(matching: .any)["performance-trend"].firstMatch.exists)
         snapshot("overview-light")
         for title in ["服务", "设备", "设置"] {
             app.tabBars.buttons[title].tap()
@@ -75,7 +76,8 @@ final class CoreNestUITests: XCTestCase {
     func testNativeAboutShowsHonestOTAStateAndPackageUpdateEntry() {
         let app = launch()
         explore(app)
-        app.buttons["app-about"].tap()
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["settings-updates"].tap()
         XCTAssertTrue(app.navigationBars["关于栖核"].waitForExistence(timeout: 5))
         let status = app.staticTexts["ota-status"]
         reveal(status, app: app)
@@ -113,6 +115,27 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertFalse(app.buttons["重启"].exists)
         XCTAssertFalse(app.buttons["service-refresh"].exists)
         snapshot("service-detail-light")
+    }
+
+    func testTrendSelectionAndToolbarFiltersAreFunctional() {
+        let app = launch()
+        explore(app)
+        let chart = app.descendants(matching: .any)["trend-chart"].firstMatch
+        XCTAssertTrue(chart.waitForExistence(timeout: 5))
+        app.buttons["trend-temperature"].tap()
+        XCTAssertTrue(chart.label.contains("温度趋势"))
+        app.buttons["trend-network"].tap()
+        XCTAssertTrue(chart.label.contains("网络趋势"))
+        app.tabBars.buttons["服务"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["runtime-services"].waitForExistence(timeout: 15))
+        app.buttons["service-filter"].tap()
+        app.buttons["service-filter-Docker"].tap()
+        XCTAssertTrue(app.buttons["container-" + String(repeating: "a", count: 64)].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["service-panel"].exists)
+        app.buttons["service-filter"].tap()
+        app.buttons["service-filter-系统"].tap()
+        XCTAssertTrue(app.buttons["service-panel"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["container-" + String(repeating: "a", count: 64)].exists)
     }
 
     func testNativeBarGeometryDoesNotChangeOnScroll() {
@@ -156,14 +179,16 @@ final class CoreNestUITests: XCTestCase {
         explore(app)
         app.tabBars.buttons["服务"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["runtime-services"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.searchFields.firstMatch.exists, "Search must be collapsed into a toolbar button")
+        app.buttons["service-search-button"].tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
         search.typeText("demo-blog")
         XCTAssertEqual(search.value as? String, "demo-blog", "Fast typing must not lose characters when results re-render")
-        let container = app.buttons["container-" + String(repeating: "a", count: 64)]
+        let container = app.buttons["search-container-" + String(repeating: "a", count: 64)]
         XCTAssertTrue(container.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["service-panel"].exists)
+        XCTAssertFalse(app.buttons["search-service-panel"].exists)
         container.tap()
         XCTAssertTrue(app.navigationBars["demo-blog"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["example/blog:stable"].exists)
@@ -201,9 +226,8 @@ final class CoreNestUITests: XCTestCase {
         let app = launch(appearance: "dark")
         explore(app)
         snapshot("overview-dark")
-        let network = app.buttons["network-details"]
-        reveal(network, app: app)
-        network.tap()
+        app.buttons["overview-actions"].tap()
+        app.buttons["network-details-menu"].tap()
         XCTAssertTrue(app.staticTexts["校园网络"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["demo-network"].exists)
         snapshot("network-dark")

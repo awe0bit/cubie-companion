@@ -13,7 +13,7 @@ struct AppSettingsView: View {
                 if !store.demo, let status = store.status {
                     LabeledContent("当前设备", value: status.hostname)
                 }
-                Text("前台每秒接收性能数据；服务和硬件信息分频更新。切到后台后停止连接。")
+                Text("曲线每秒采样，数字每 5 秒更新；切到后台后停止连接。趋势仅保留本次会话最近 2 分钟，不生成缺失数据。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("应用") {
@@ -24,7 +24,7 @@ struct AppSettingsView: View {
             }
             Section {
                 Label("连接凭据仅保存于本机钥匙串", systemImage: "lock.shield")
-                Text("数字动效跟随系统“减弱动态效果”；外观跟随系统。")
+                Text("外观跟随系统；搜索与筛选在服务页右上角和左上角。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

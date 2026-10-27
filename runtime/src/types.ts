@@ -4,10 +4,10 @@ export type Container = { id: string; name: string; image: string; state: string
 export type Hardware = { id: string; category: string; name: string; stateText: string };
 export type Snapshot = {
   demo: boolean; stale: boolean; refreshing: boolean; error?: string; notice?: string;
-  refreshAcknowledgement?: boolean; live?: boolean;
+  refreshAcknowledgement?: boolean; live?: boolean; telemetrySession?: string;
   lastContact?: string; inventoryError?: string; inventoryStale: boolean;
   status?: {
-    hostname: string; cpuPercent?: number; memoryUsedBytes?: number; memoryTotalBytes?: number;
+    sampledAt: string; hostname: string; cpuPercent?: number; memoryUsedBytes?: number; memoryTotalBytes?: number;
     diskUsedBytes?: number; diskTotalBytes?: number; uptimeSeconds?: number;
     rxBytesPerSecond?: number; txBytesPerSecond?: number;
     temperatures: { name: string; celsius: number }[]; powerWatts?: number; fanRPM?: number;

@@ -117,23 +117,6 @@ struct DeviceControlsView: View {
                     Text(store.demo ? "演示数据，不会控制真实设备。" : "当前绑定为只读。控制权限需在主板端授权，App 不会自行提权。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Docker 应用").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                if !management.dockerAvailable {
-                    Text("Docker 暂不可用，请检查主板守护进程。")
-                } else if management.containers.isEmpty {
-                    Text("当前没有容器。")
-                }
-                ForEach(management.containers) { container in
-                    NavigationLink { ContainerDetailView(containerID: container.id) } label: {
-                        Card {
-                            HStack {
-                                Label(container.name, systemImage: "shippingbox").font(.subheadline)
-                                Spacer()
-                                Text(container.stateText).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }.buttonStyle(.plain)
-                }
             } else {
                 ContentUnavailableView("设备控制尚未就绪", systemImage: "switch.2",
                     description: Text(store.managementError ?? "请连接开发板并更新服务端。"))

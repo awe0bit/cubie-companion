@@ -39,9 +39,6 @@ struct ConnectionBanner: View {
                     Circle().fill(store.stale ? .orange : .teal).frame(width: 7, height: 7)
                     Text(store.stale ? "连接中断 · 上次数据" : "已连接")
                     Spacer()
-                    if let last = store.lastContact {
-                        Text(last.formatted(date: .omitted, time: .standard)).monospacedDigit()
-                    }
                 }.font(.caption).foregroundStyle(.secondary)
             }
             if let error = store.error {

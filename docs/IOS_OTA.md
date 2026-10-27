@@ -36,6 +36,9 @@ runtime 和源码提交，不把账户名或控制台链接写入公开 CI 日�
 因此需要先安装新版 IPA，不能靠旧 runtime 的 OTA 增加原生标签或网络能力。
 后续页面更新仍在独立项目的 production / preview 通道发布。
 
+0.9.0 的 SVG 趋势图和原生工具栏搜索使用 runtime 0.9.0；请先安装新版 IPA。
+旧运行时不会收到不兼容的图表更新。
+
 正常 IPA 工作流先检查隐私、TypeScript、OTA 生命周期，然后在 macOS 构建真实 Brownfield Package；新旧 iOS 模拟器运行交互测试，最后打包 arm64 iPhoneOS 未签 IPA。
 
 ```sh

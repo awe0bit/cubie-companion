@@ -18,9 +18,11 @@ test('numeric transitions are native-driver, bounded, accessible and respect Red
 test('compact cards adapt to large text and never claim demo values are live', () => {
   const source = fs.readFileSync(require.resolve('../src/App.tsx'), 'utf8');
   assert.ok(source.includes('fontScale > 1.4'));
-  assert.ok(source.includes('fontScale <= 1.15 ? 3 : 2'));
+  assert.ok(source.includes('TrendCard data={dashboard}'));
   assert.ok(source.includes('minHeight: 52'));
-  assert.ok(source.includes("snapshot.live ? '实时推送 · 1 秒采样'"));
+  assert.ok(source.includes("snapshot.live ? '已连接'"));
   assert.ok(source.includes("snapshot.demo ? '演示数据'"));
   assert.ok(!source.includes('setInterval'));
+  assert.ok(!source.includes('RollingValue'));
+  assert.ok(source.includes('!nativeToolbar &&'));
 });
