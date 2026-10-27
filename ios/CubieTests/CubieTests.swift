@@ -19,6 +19,9 @@ final class CubieTests: XCTestCase {
     }
 
     func testConnectionPolicyUsesPowerNetworkAndThermalSignals() {
+        XCTAssertEqual(ConnectionPolicy.streamIdleTimeout(interval: 1), 8)
+        XCTAssertEqual(ConnectionPolicy.streamIdleTimeout(interval: 5), 15)
+        XCTAssertEqual(ConnectionPolicy.streamIdleTimeout(interval: 15), 35)
         XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: false, thermal: .nominal), 1)
         XCTAssertEqual(ConnectionPolicy.interval(overview: false, economy: false, constrained: false, thermal: .nominal), 5)
         XCTAssertEqual(ConnectionPolicy.interval(overview: true, economy: false, constrained: false, thermal: .nominal, expensive: true), 5)

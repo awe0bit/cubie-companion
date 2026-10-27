@@ -3,6 +3,9 @@ import Combine
 import Network
 
 enum ConnectionPolicy {
+    static func streamIdleTimeout(interval: Int) -> TimeInterval {
+        Double(max(8, min(15, max(1, interval)) * 2 + 5))
+    }
     static func interval(overview: Bool, settings: Bool = false, economy: Bool,
                          constrained: Bool, thermal: ProcessInfo.ThermalState, expensive: Bool = false) -> Int {
         if economy || constrained || thermal == .serious || thermal == .critical || settings { return 15 }
@@ -172,6 +175,7 @@ final class APIClient {
     func snapshots(interval: Int = 1, adaptive: Bool = false,
                    receive: @MainActor (DashboardSnapshot) throws -> Void) async throws {
         var request = authorizedRequest("events")
+        request.timeoutInterval = ConnectionPolicy.streamIdleTimeout(interval: adaptive ? interval : 1)
         if adaptive { request.setValue(String([1, 5, 15].contains(interval) ? interval : 5), forHTTPHeaderField: "X-CoreNest-Interval") }
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         let cancellation = StreamCancellation()
