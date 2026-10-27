@@ -120,7 +120,7 @@ class Collector:
     def snapshot(self):
         with self.lock:
             now = time.monotonic()
-            if self.cached is not None and now - self.cached_at < 3:
+            if self.cached is not None and now - self.cached_at < 0.9:
                 return self.cached
             data = {"sampledAt": utc(), "hostname": socket.gethostname(),
                     "cpuPercent": None, "memoryUsedBytes": None,
@@ -296,6 +296,7 @@ class App:
         self.ledger = ledger or ActionLedger()
         self.led_readbacks = {}
         self.readback_lock = threading.Lock()
+        self.stream_slots = threading.BoundedSemaphore(2)
 
     def management(self):
         result = self.collector.management()
@@ -331,7 +332,7 @@ class App:
         raise APIError(401, "unauthorized")
 
     def capabilities(self, role, managed):
-        return {"apiVersion": 1, "role": role, "snapshotBundle": True,
+        return {"apiVersion": 1, "role": role, "snapshotBundle": True, "liveSnapshots": True,
                 "serviceControl": self.config.get("serviceControl") is True and role == "admin" and managed.get('serviceControl', True),
                 "deviceReboot": self.config.get("deviceReboot") is True and role == "admin",
                 "rawLogs": False,
@@ -457,6 +458,25 @@ class App:
             from pairing_web import PairingWeb
             return PairingWeb(self.pairing)(env, start_response)
         try:
+            if path == '/v1/events' and env.get('REQUEST_METHOD') == 'GET':
+                from realtime import SnapshotStream, frame
+                role = self.role(env)
+                if env.get('QUERY_STRING'): raise APIError(400, 'query_not_supported')
+                if not self.stream_slots.acquire(blocking=False): raise APIError(503, 'stream_capacity')
+                try:
+                    initial = frame(self.bundled_snapshot(role))
+                except Exception:
+                    self.stream_slots.release()
+                    raise
+                stream = SnapshotStream(self, env, initial)
+                try:
+                    start_response('200 OK', [('Content-Type', 'text/event-stream; charset=utf-8'),
+                        ('Cache-Control', 'no-store, no-transform'), ('X-Accel-Buffering', 'no'),
+                        ('X-Content-Type-Options', 'nosniff')])
+                except Exception:
+                    stream.close()
+                    raise
+                return stream
             result, code = self.dispatch(env), 200
         except APIError as error:
             result, code = {"error": error.code}, error.status

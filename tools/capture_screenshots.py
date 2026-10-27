@@ -24,7 +24,7 @@ def main():
     call('status_bar',args.device,'override','--time','9:41','--dataNetwork','wifi',
          '--wifiMode','active','--wifiBars','3','--batteryState','charged','--batteryLevel','100')
     for appearance in ['light','dark']:
-        for tab in ['overview','services','devices']:
+        for tab in ['overview','services','devices','settings']:
             call('terminate',args.device,BUNDLE,check=False)
             call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab',tab,'--preview-appearance',appearance)
             time.sleep(10)  # Cold native/runtime startup must finish before taking a screenshot.
@@ -44,7 +44,7 @@ def main():
          '-UIPreferredContentSizeCategoryName','UICTContentSizeCategoryAccessibilityXXXL')
     time.sleep(10)
     call('io',args.device,'screenshot',str(args.output/'settings-accessibility.png'))
-    print('Captured 11 real simulator screenshots; all displayed data are demo fixtures.')
+    print('Captured 13 real simulator screenshots; all displayed data are demo fixtures.')
 
 
 if __name__=='__main__':main()

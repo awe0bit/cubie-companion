@@ -49,8 +49,35 @@ def main():
             assert results["status"]["powerWatts"] is None
             assert results['snapshot']['capabilities']['snapshotBundle']
             assert results['snapshot']['status']['powerWatts'] is None
+            # Hold both permitted event streams while exercising another worker.
+            # No host mutation is performed: this is a real HTTP read/concurrency check.
+            streams = []
+            try:
+                for _ in range(2):
+                    request = urllib.request.Request(base + '/v1/events', headers={'Authorization': 'Bearer ' + token})
+                    stream = opener.open(request, timeout=12)
+                    streams.append(stream)
+                    assert stream.headers['Content-Type'].startswith('text/event-stream')
+                    assert stream.readline() == b'event: snapshot\n'
+                    assert stream.readline().startswith(b'data: ')
+                    assert stream.readline() == b'\n'
+                started = time.monotonic()
+                request = urllib.request.Request(base + '/v1/status', headers={'Authorization': 'Bearer ' + token})
+                with opener.open(request, timeout=3) as response: assert response.status == 200
+                assert time.monotonic() - started < 3, 'streams_starved_regular_requests'
+                try:
+                    opener.open(urllib.request.Request(base + '/v1/events', headers={'Authorization': 'Bearer ' + token}), timeout=3)
+                    raise AssertionError('stream_capacity_not_enforced')
+                except urllib.error.HTTPError as error:
+                    assert error.code == 503
+                    error.close()
+                # At least one subsequent event/heartbeat must arrive without reopening HTTP.
+                assert streams[0].readline().startswith((b'event: snapshot', b': heartbeat'))
+            finally:
+                for stream in streams: stream.close()
             print(json.dumps({"production_http_smoke": "passed", "anonymous_status": 401,
-                              "authenticated_get_routes": 6, "mutations_executed": 0}))
+                              "authenticated_get_routes": 7, "concurrent_streams": 2,
+                              "stream_capacity_enforced": True, "mutations_executed": 0}))
         finally:
             server.task_dispatcher.shutdown(timeout=5)
             server.close()

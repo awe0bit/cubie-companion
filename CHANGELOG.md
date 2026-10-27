@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0 — Live dashboard and native settings
+
+- Foreground authenticated SSE snapshots with one-second host performance sampling;
+  services/control inventory refresh every five seconds, hardware every ten seconds.
+- Two bounded event streams leave four HTTP workers for normal and control requests;
+  revocation is rechecked per event, background cancellation and reconnect backoff are native.
+- Changed numeric values slide up/out and in from below; Reduce Motion disables transitions.
+- Compact responsive metrics and shorter service rows retain accessible large-text layouts.
+- Fourth system-owned Settings tab links to QR binding and real update screens.
+- Native runtime 0.8.0 requires a new IPA; no credentials or deployment addresses are embedded.
+
 ## 0.7.1 — OTA commissioning
 
 - Manual pull-to-refresh has one acknowledged spinner; background polling stays

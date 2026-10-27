@@ -10,15 +10,15 @@ enum Brand {
     static let name = "CoreNest"
     static let chineseName = "栖核"
     static let tagline = "让设备与服务，各归其位。"
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.7.1"
-    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "9"
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.8.0"
+    static let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "10"
     static let accent = Color("AccentColor")
     // Blue filled controls use dark text in BOTH appearances for readable contrast.
     static let onAccent = Color(red: 0.07, green: 0.09, blue: 0.12)
 }
 
 enum AppTab: String, CaseIterable {
-    case overview, services, devices
+    case overview, services, devices, settings
 }
 
 enum Layout {

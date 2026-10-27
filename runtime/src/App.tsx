@@ -3,6 +3,7 @@ import { Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, Text
 import { send, subscribe } from './native';
 import { startUpdates } from './updates';
 import { ManualRefresh } from './refresh';
+import { RollingValue } from './RollingValue';
 import { layout, palette } from './theme';
 import { bytes, groupedServices, stateText } from './presentation';
 import type { Route, Snapshot } from './types';
@@ -21,6 +22,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const colors = palette((appearance === 'light' || appearance === 'dark' ? appearance : system) === 'dark');
   const { width, fontScale } = useWindowDimensions();
   const narrow = fontScale > 1.4 || width < 350;
+  const columns = narrow ? 1 : width >= 375 && fontScale <= 1.15 ? 3 : 2;
   const act = (action: string, id?: string) => send(client, action, id);
   useEffect(() => {
     const unsubscribe = subscribe(message => {
@@ -53,9 +55,9 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       <Text accessibilityElementsHidden style={{ color: colors.quiet, fontSize: 19 }}>›</Text>
     </Pressable>
   );
-  const metric = (title: string, value: string, detail = '', fraction?: number) => <View key={title} style={[styles.metric, { width: narrow ? '100%' : '50%' }]}>
+  const metric = (title: string, value: string, detail = '', fraction?: number) => <View key={title} style={[styles.metric, { width: columns === 3 ? '33.333%' : columns === 2 ? '50%' : '100%' }]}>
     {label(title, true, 12)}
-    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.7} style={{ color: colors.ink, fontSize: 23, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
+    <RollingValue value={value} color={colors.ink} />
     {!!detail && label(detail, true, 11)}
     {fraction != null && <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.separator }}><View style={{ height: 3, borderRadius: 2, backgroundColor: fraction > .85 ? colors.warning : colors.accent, width: `${Math.max(0, Math.min(1, fraction)) * 100}%` }} /></View>}
   </View>;
@@ -75,7 +77,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       <View accessibilityLabel={snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断，上次数据' : '已连接'} style={styles.banner}>
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: snapshot.stale ? colors.warning : snapshot.demo ? colors.quiet : colors.success }} />
-          {label(snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断 · 上次数据' : '实时连接', true, 11)}
+          {label(snapshot.demo ? '演示数据' : snapshot.stale ? '连接中断 · 上次数据' : snapshot.live ? '实时推送 · 1 秒采样' : '等待实时连接', true, 11)}
         </View>
         {label('下拉刷新', true, 11)}
       </View>
@@ -88,19 +90,20 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
           {card(<View style={[styles.board, narrow && { flexDirection: 'column', alignItems: 'flex-start' }]}>
             <View style={{ flex: 1, gap: 4 }}>
               <Text numberOfLines={1} style={{ color: colors.ink, fontSize: 18, fontWeight: '600' }}>{b.hostname}</Text>
-              {label('Cubie A7S', true, 12)}
-              {b.uptimeSeconds != null && label(`已运行 ${Math.floor(b.uptimeSeconds / 3600)}h ${Math.floor(b.uptimeSeconds % 3600 / 60)}m`, true, 11)}
+              {label(`Cubie A7S${b.uptimeSeconds != null ? ` · 运行 ${Math.floor(b.uptimeSeconds / 3600)}h ${Math.floor(b.uptimeSeconds % 3600 / 60)}m` : ''}`, true, 11)}
             </View>
             {highest != null && <View style={{ alignItems: 'flex-end', gap: 2 }}>
-              <Text style={{ color: highest >= 75 ? colors.warning : colors.ink, fontSize: 32, fontWeight: '500', fontVariant: ['tabular-nums'] }}>{highest.toFixed(1)}°</Text>
+              <RollingValue value={`${highest.toFixed(1)}°`} color={highest >= 75 ? colors.warning : colors.ink} size={28} />
               {label(highest >= 75 ? '温度偏高' : '最高温度', true, 11)}
             </View>}
           </View>)}
           {card(<View style={styles.metrics}>
-            {b.cpuPercent != null && metric('CPU', `${b.cpuPercent.toFixed(1)}%`, '实时负载', b.cpuPercent / 100)}
+            {b.cpuPercent != null && metric('CPU', `${b.cpuPercent.toFixed(1)}%`, '', b.cpuPercent / 100)}
             {b.memoryUsedBytes != null && metric('内存', bytes(b.memoryUsedBytes), `共 ${bytes(b.memoryTotalBytes)}`, b.memoryTotalBytes ? b.memoryUsedBytes / b.memoryTotalBytes : undefined)}
             {b.diskUsedBytes != null && metric('存储', bytes(b.diskUsedBytes), `共 ${bytes(b.diskTotalBytes)}`, b.diskTotalBytes ? b.diskUsedBytes / b.diskTotalBytes : undefined)}
-            {b.rxBytesPerSecond != null && metric('网络 ↓ / ↑', `${bytes(b.rxBytesPerSecond)}/s`, `↑ ${bytes(b.txBytesPerSecond)}/s`)}
+            {b.rxBytesPerSecond != null && metric('下载 ↓', `${bytes(b.rxBytesPerSecond)}/s`)}
+            {b.txBytesPerSecond != null && metric('上传 ↑', `${bytes(b.txBytesPerSecond)}/s`)}
+            {metric('在线服务', `${running}/${snapshot.services.length + containers.length}`)}
             {b.powerWatts != null && metric('功耗', `${b.powerWatts.toFixed(1)} W`)}
             {b.fanRPM != null && metric('风扇', `${Math.round(b.fanRPM)} RPM`)}
           </View>, undefined, true)}
@@ -113,7 +116,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       </>}
       {route === 'services' && <>
         <View style={styles.heading}>
-          <Text style={{ color: colors.ink, fontSize: 23, fontWeight: '600' }}>{running}<Text style={{ color: colors.quiet, fontSize: 13 }}> / {snapshot.services.length + containers.length} 运行中</Text></Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}><RollingValue value={String(running)} color={colors.ink} /><Text style={{ color: colors.quiet, fontSize: 13 }}> / {snapshot.services.length + containers.length} 运行中</Text></View>
           {label(`${containers.length} 个容器`, true, 12)}
         </View>
         {!nativeSearch && <TextInput accessibilityLabel="搜索服务" testID="service-search" defaultValue="" onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
@@ -166,10 +169,10 @@ const styles = StyleSheet.create({
   heading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   board: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', padding: 4 },
-  metric: { padding: 10, gap: 5 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, paddingVertical: 10, paddingHorizontal: 14 },
-  linkText: { flex: 1, gap: 4 },
-  icon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  metric: { paddingHorizontal: 10, paddingVertical: 8, gap: 3 },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 52, paddingVertical: 8, paddingHorizontal: 12 },
+  linkText: { flex: 1, gap: 3 },
+  icon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   status: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 68 },
   search: { borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, fontSize: 14, minHeight: 42 },
   filters: { flexDirection: 'row', gap: 7 },

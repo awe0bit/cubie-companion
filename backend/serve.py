@@ -19,8 +19,11 @@ def build_server(config_path, state_path, port, host="127.0.0.1", pairing_path=N
               pairing=PairingStore(pairing_path) if pairing_path else None,
               observer=(lambda event: print(json.dumps(event), flush=True)) if os.environ.get('CORENEST_TRACE_REQUESTS') == '1' else None,
               collector=FileCollector(telemetry) if telemetry else None)
-    server = create_server(app, host=host, port=port, threads=4,
+    # At most two streams, leaving four workers available for reads and controls.
+    server = create_server(app, host=host, port=port, threads=6,
         connection_limit=16, backlog=32, channel_timeout=15, asyncore_loop_timeout=0.1,
+        # Pinned Waitress 3.0.2 includes the lookahead request-smuggling fix.
+        channel_request_lookahead=1, log_socket_errors=False,
         max_request_body_size=1024, max_request_header_size=8192,
         expose_tracebacks=False, clear_untrusted_proxy_headers=True)
     return server, app

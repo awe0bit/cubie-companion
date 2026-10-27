@@ -21,7 +21,7 @@ extension Notification.Name {
 final class RuntimeBridge: ObservableObject {
     static let shared = RuntimeBridge()
     @Published private(set) var updateStage = "idle"
-    @Published private(set) var runtime = "0.7.0"
+    @Published private(set) var runtime = "0.8.0"
     @Published private(set) var channel = "not-configured"
     @Published private(set) var launchUpdateID = ""
     @Published private(set) var embeddedLaunch = true
@@ -55,7 +55,7 @@ final class RuntimeBridge: ObservableObject {
     static func snapshot(_ store: BoardStore) -> [String: Any] {
         var result: [String: Any] = [
             "demo": store.demo, "stale": store.stale, "refreshing": store.userRefreshing,
-            "refreshAcknowledgement": true,
+            "refreshAcknowledgement": true, "live": store.live,
             "inventoryStale": store.inventoryStale,
             "services": store.services.map { ["id": $0.id, "name": $0.name, "unit": $0.unit, "state": $0.state, "stateText": $0.stateText] },
         ]
@@ -152,7 +152,7 @@ struct RuntimeScreen: View {
     private var ready: Bool { bridge.readyClients.contains(client) }
 
     private var title: String {
-        switch route { case .overview: return Brand.chineseName; case .services: return "服务"; case .devices: return "设备" }
+        switch route { case .overview: return Brand.chineseName; case .services: return "服务"; case .devices: return "设备"; case .settings: return "设置" }
     }
 
     var body: some View {
@@ -240,6 +240,7 @@ struct RuntimeScreen: View {
         case .overview: OverviewView()
         case .services: ServicesView()
         case .devices: DevicesView()
+        case .settings: AppSettingsView()
         }
     }
 }

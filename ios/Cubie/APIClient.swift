@@ -46,6 +46,7 @@ final class APIClient {
     private let baseURL: URL
     private let session: URLSession
     private let controlSession: URLSession
+    private let streamSession: URLSession
 
     static func normalizedURL(_ value: String) throws -> URL {
         guard let parts = URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -83,9 +84,40 @@ final class APIClient {
         let controlConfiguration = configuration.copy() as! URLSessionConfiguration
         controlConfiguration.httpMaximumConnectionsPerHost = 2
         controlSession = URLSession(configuration: controlConfiguration, delegate: NoRedirectDelegate(), delegateQueue: nil)
+        let streamConfiguration = configuration.copy() as! URLSessionConfiguration
+        streamConfiguration.timeoutIntervalForRequest = 8
+        streamConfiguration.timeoutIntervalForResource = 20
+        streamConfiguration.httpMaximumConnectionsPerHost = 1
+        streamSession = URLSession(configuration: streamConfiguration, delegate: NoRedirectDelegate(), delegateQueue: nil)
     }
 
-    deinit { session.invalidateAndCancel(); controlSession.invalidateAndCancel() }
+    deinit { session.invalidateAndCancel(); controlSession.invalidateAndCancel(); streamSession.invalidateAndCancel() }
+
+    func snapshots(receive: @MainActor (DashboardSnapshot) -> Void) async throws {
+        var request = authorizedRequest("events")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        let (bytes, response) = try await streamSession.bytes(for: request)
+        defer { bytes.task.cancel() }
+        guard let response = response as? HTTPURLResponse else { throw ConnectionError.unexpectedResponse }
+        guard response.statusCode == 200 else { throw ConnectionError.http(response.statusCode) }
+        guard response.mimeType == "text/event-stream" else { throw ConnectionError.unexpectedResponse }
+        var parser = SnapshotEventDecoder()
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            if let snapshot = try parser.append(byte) { await receive(snapshot) }
+        }
+        guard parser.complete else { throw ConnectionError.unexpectedResponse }
+    }
+
+    private func authorizedRequest(_ path: String) -> URLRequest {
+        var request = URLRequest(url: baseURL.appendingPathComponent("v1").appendingPathComponent(path))
+        request.setValue("Bearer \(credentials.apiToken)", forHTTPHeaderField: "Authorization")
+        if !credentials.accessClientID.isEmpty {
+            request.setValue(credentials.accessClientID, forHTTPHeaderField: "CF-Access-Client-Id")
+            request.setValue(credentials.accessClientSecret, forHTTPHeaderField: "CF-Access-Client-Secret")
+        }
+        return request
+    }
 
     func get<T: Decodable>(_ path: String) async throws -> T {
         try await request(path, body: nil)
@@ -96,14 +128,9 @@ final class APIClient {
     }
 
     private func request<T: Decodable>(_ path: String, body: [String: String]?) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent("v1").appendingPathComponent(path))
+        var request = authorizedRequest(path)
         request.httpMethod = body == nil ? "GET" : "POST"
-        request.setValue("Bearer \(credentials.apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if !credentials.accessClientID.isEmpty {
-            request.setValue(credentials.accessClientID, forHTTPHeaderField: "CF-Access-Client-Id")
-            request.setValue(credentials.accessClientSecret, forHTTPHeaderField: "CF-Access-Client-Secret")
-        }
         if let body {
             request.httpBody = try JSONEncoder().encode(body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -123,5 +150,39 @@ final class APIClient {
             throw ConnectionError.unexpectedResponse
         }
         return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+/// Strict bounded decoder for our single-line JSON event protocol. No unbounded `.lines` allocation.
+struct SnapshotEventDecoder {
+    private var line = Data()
+    private var payload = Data()
+    private var event = ""
+    private var size = 0
+    private(set) var complete = true
+    private(set) var received = false
+
+    mutating func append(_ byte: UInt8) throws -> DashboardSnapshot? {
+        size += 1
+        guard size <= 131_200 else { throw ConnectionError.unexpectedResponse }
+        complete = false
+        if byte != 10 { line.append(byte); return nil }
+        if line.last == 13 { line.removeLast() }
+        defer { line.removeAll(keepingCapacity: true) }
+        if line.isEmpty {
+            defer { event = ""; payload.removeAll(keepingCapacity: true); size = 0; complete = true }
+            if event == "unavailable" { throw ConnectionError.http(503) }
+            guard event == "snapshot", !payload.isEmpty else { return nil }
+            let result = try JSONDecoder().decode(DashboardSnapshot.self, from: payload)
+            received = true
+            return result
+        }
+        guard let value = String(data: line, encoding: .utf8) else { throw ConnectionError.unexpectedResponse }
+        if value.hasPrefix("event: ") { event = String(value.dropFirst(7)) }
+        if value.hasPrefix("data: ") {
+            guard payload.isEmpty else { throw ConnectionError.unexpectedResponse }
+            payload = Data(value.dropFirst(6).utf8)
+        }
+        return nil
     }
 }

@@ -93,6 +93,7 @@ struct Capabilities: Codable {
     let deviceInventory: Bool?
     let managementInventory: Bool?
     let snapshotBundle: Bool?
+    let liveSnapshots: Bool?
 }
 
 struct DashboardSnapshot: Codable {

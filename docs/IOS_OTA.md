@@ -32,6 +32,10 @@ runtime 和源码提交，不把账户名或控制台链接写入公开 CI 日�
 0.7.1 的原生兼容 runtime 仍为 0.7.0。更新地址首次被嵌入的新安装包需要重装一次；
 之后“关于栖核”会分别显示页面来源与页面 ID，可核实下载是否真正于冷启动后生效。
 
+0.8.0 使用新的原生兼容 runtime 0.8.0，新增原生设置标签和前台事件流连接，
+因此需要先安装新版 IPA，不能靠旧 runtime 的 OTA 增加原生标签或网络能力。
+后续页面更新仍在独立项目的 production / preview 通道发布。
+
 正常 IPA 工作流先检查隐私、TypeScript、OTA 生命周期，然后在 macOS 构建真实 Brownfield Package；新旧 iOS 模拟器运行交互测试，最后打包 arm64 iPhoneOS 未签 IPA。
 
 ```sh

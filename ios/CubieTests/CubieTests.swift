@@ -80,8 +80,37 @@ final class CubieTests: XCTestCase {
         XCTAssertEqual(manifest?["NSPrivacyTracking"] as? Bool, false)
     }
 
-    func testNavigationHasThreeStableTabs() {
-        XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "devices"])
+    func testNavigationHasFourStableTabs() {
+        XCTAssertEqual(AppTab.allCases.map(\.rawValue), ["overview", "services", "devices", "settings"])
+    }
+
+    func testRealtimeDecoderHandlesFragmentedUTF8HeartbeatsAndConsecutiveEvents() throws {
+        let caps = try JSONDecoder().decode(Capabilities.self, from: Data(#"{"apiVersion":1,"role":"viewer","serviceControl":false,"deviceReboot":false,"rawLogs":false,"dockerControl":false,"ledControl":false,"powerMeasurement":false,"fanRPM":false,"liveSnapshots":true}"#.utf8))
+        let bundle = DashboardSnapshot(status: Demo.status, services: ServiceList(sampledAt: Demo.status.sampledAt, services: Demo.services),
+            network: Demo.network, capabilities: caps, management: Demo.management, inventory: Demo.inventory)
+        let data = try JSONEncoder().encode(bundle)
+        var parser = SnapshotEventDecoder()
+        var count = 0
+        let frame = Data("event: snapshot\r\ndata: ".utf8) + data + Data("\r\n\r\n: heartbeat\n\n".utf8)
+        for byte in frame + frame {
+            if let result = try parser.append(byte) {
+                count += 1
+                XCTAssertEqual(result.management?.leds.first?.name, "蓝色状态灯")
+            }
+        }
+        XCTAssertEqual(count, 2)
+        XCTAssertTrue(parser.complete)
+    }
+
+    func testRealtimeDecoderRejectsOversizeMalformedAndUnavailableEvents() {
+        for bytes in [Data(repeating: 65, count: 131_201), Data("event: snapshot\ndata: not-json\n\n".utf8),
+                      Data("event: unavailable\ndata: {}\n\n".utf8)] {
+            var parser = SnapshotEventDecoder()
+            XCTAssertThrowsError(try bytes.forEach { _ = try parser.append($0) })
+        }
+        var partial = SnapshotEventDecoder()
+        _ = try? partial.append(65)
+        XCTAssertFalse(partial.complete)
     }
 
     @MainActor func testManagementFixturesAndBridgeDoNotGrantControl() throws {

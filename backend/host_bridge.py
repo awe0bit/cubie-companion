@@ -32,17 +32,22 @@ class FileCollector:
     def logs(self, ident): raise APIError(503, "host_journal_not_exported")
 
 
-def export_once(collector, folder):
+def export_once(collector, folder, cache=None):
     folder = Path(folder)
-    try:
-        from management import broker_request
-        management = broker_request({'action': 'snapshot'})
-    except (OSError, ValueError, AttributeError):
-        management = {'sampledAt': __import__('server').utc(), 'leds': [], 'containers': [],
-                      'dockerAvailable': False, 'serviceControl': False, 'ledControl': False, 'dockerControl': False}
-    payload = {"status": collector.snapshot(), "services": collector.services(), "network": collector.network(),
-               "management": management,
-               "devices": collector.devices(), "exportedAt": time.time()}
+    cache = {} if cache is None else cache
+    now = time.monotonic()
+    if now - cache.get('metadata_at', float('-inf')) >= 5:
+        try:
+            from management import broker_request
+            management = broker_request({'action': 'snapshot'})
+        except (OSError, ValueError, AttributeError):
+            management = {'sampledAt': __import__('server').utc(), 'leds': [], 'containers': [],
+                          'dockerAvailable': False, 'serviceControl': False, 'ledControl': False, 'dockerControl': False}
+        cache.update(services=collector.services(), network=collector.network(), management=management, metadata_at=now)
+    if now - cache.get('devices_at', float('-inf')) >= 10:
+        cache.update(devices=collector.devices(), devices_at=now)
+    payload = {"status": collector.snapshot(), "services": cache['services'], "network": cache['network'],
+               "management": cache['management'], "devices": cache['devices'], "exportedAt": time.time()}
     temporary = folder / "telemetry.tmp"
     temporary.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False), encoding="utf-8")
     temporary.chmod(0o644)
@@ -54,9 +59,11 @@ def main():
     parser.add_argument("--output", default="/run/corenest-host")
     args = parser.parse_args()
     collector = Collector()
+    cache = {}
     while True:
-        export_once(collector, args.output)
-        time.sleep(5)
+        started = time.monotonic()
+        export_once(collector, args.output, cache)
+        time.sleep(max(0.05, 1 - (time.monotonic() - started)))
 
 
 if __name__ == "__main__": main()

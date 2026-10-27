@@ -41,7 +41,7 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(element.isHittable)
     }
 
-    func testWelcomeAndThreeNativeTabs() {
+    func testWelcomeAndFourNativeTabs() {
         let app = launch()
         XCTAssertTrue(app.staticTexts["welcome-title"].waitForExistence(timeout: 10))
         snapshot("welcome-light")
@@ -49,7 +49,7 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(app.buttons["overview-connect"].exists)
         XCTAssertTrue(app.buttons["overview-controls"].isHittable, "Compact overview should expose controls without scrolling")
         snapshot("overview-light")
-        for title in ["服务", "设备"] {
+        for title in ["服务", "设备", "设置"] {
             app.tabBars.buttons[title].tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
             snapshot(title+"-light")
@@ -126,12 +126,29 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(bar.buttons["概览"].isHittable)
         XCTAssertTrue(bar.buttons["服务"].isHittable)
         XCTAssertTrue(bar.buttons["设备"].isHittable)
+        XCTAssertTrue(bar.buttons["设置"].isHittable)
+        XCTAssertEqual(bar.buttons.count, 4)
         XCTAssertEqual(bar.frame.height, original.height, accuracy: 1)
         XCTAssertEqual(bar.frame.width, original.width, accuracy: 1)
         XCTAssertEqual(bar.frame.minY, original.minY, accuracy: 1)
         XCTAssertFalse(app.staticTexts["不支持转速反馈"].exists)
         XCTAssertFalse(app.staticTexts["未提供实测数据"].exists)
         snapshot("overview-scrolled-light")
+    }
+
+    func testSettingsTabHasWorkingBindingAndUpdateNavigation() {
+        let app = launch()
+        explore(app)
+        app.tabBars.buttons["设置"].tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.tabBars.count, 1)
+        app.buttons["settings-binding"].tap()
+        XCTAssertTrue(app.navigationBars["绑定"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["scan-pair"].isHittable)
+        XCTAssertEqual(app.textFields.count, 0)
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["settings-updates"].tap()
+        XCTAssertTrue(app.navigationBars["关于栖核"].waitForExistence(timeout: 5))
     }
 
     func testServiceSearchFiltersAndDockerDetails() {

@@ -19,6 +19,7 @@ final class BoardStore: ObservableObject {
     @Published private(set) var lastContact: Date?
     @Published private(set) var refreshing = false
     @Published private(set) var userRefreshing = false
+    @Published private(set) var live = false
     @Published private(set) var operating = false
     @Published private(set) var operatingLEDID: String?
     @Published var error: String?
@@ -67,6 +68,7 @@ final class BoardStore: ObservableObject {
         refreshTask = nil
         refreshing = false
         userRefreshing = false
+        live = false
         operatingLEDID = nil
         bundleUnsupported = false
         ledReadbacks.removeAll()
@@ -104,6 +106,7 @@ final class BoardStore: ObservableObject {
         refreshTask = nil
         refreshing = false
         userRefreshing = false
+        live = false
         operatingLEDID = nil
         bundleUnsupported = false
         ledReadbacks.removeAll()
@@ -172,8 +175,57 @@ final class BoardStore: ObservableObject {
         do {
             let bundle = try await loadSnapshot(client)
             guard revision == generation, !Task.isCancelled else { return }
+            try apply(bundle)
+        } catch {
+            guard revision == generation, !Task.isCancelled else { return }
+            self.error = error is URLError ? "连接暂未完成，保留上次数据。请稍后下拉重试。" : "未能刷新，保留上次数据。\(error.localizedDescription)"
+        }
+    }
+
+    /// Called only by the scene's structured task; cancellation closes the stream on background/forget.
+    func receiveLiveUpdates() async {
+        guard !demo, let client else { return }
+        let revision = generation
+        var failures = 0
+        await refresh()
+        defer { if generation == revision { live = false } }
+        while !Task.isCancelled && generation == revision {
+            do {
+                if capabilities?.liveSnapshots == true {
+                    var received = false
+                    try await client.snapshots { [weak self] bundle in
+                        guard let self, self.generation == revision, !Task.isCancelled else { return }
+                        do {
+                            try self.apply(bundle)
+                            self.live = true
+                            received = true
+                        } catch { self.live = false }
+                    }
+                    guard received else { throw ConnectionError.unexpectedResponse }
+                    failures = 0
+                    // Normal short-lease renewal is not a failed connection.
+                    try await Task.sleep(nanoseconds: 200_000_000)
+                } else {
+                    await refresh()
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+            } catch {
+                guard !Task.isCancelled, generation == revision else { return }
+                live = false
+                failures = min(failures + 1, 5)
+                // Back off before diagnostics/fallback too: never create request storms.
+                do { try await Task.sleep(nanoseconds: UInt64(min(30, 1 << failures)) * 1_000_000_000) }
+                catch { return }
+                await refresh()
+            }
+        }
+    }
+
+    private func apply(_ bundle: DashboardSnapshot) throws {
             let newCapabilities = bundle.capabilities
             guard newCapabilities.apiVersion == 1 else { throw ConnectionError.incompatibleAPI }
+            if let previous = status.flatMap({ Display.date($0.sampledAt) }),
+               let incoming = Display.date(bundle.status.sampledAt), incoming < previous { return }
             status = bundle.status
             services = bundle.services.services
             servicesSampledAt = bundle.services.sampledAt
@@ -213,10 +265,6 @@ final class BoardStore: ObservableObject {
                 inventoryLastContact = nil
                 inventoryError = "服务端尚不支持硬件识别，请升级 CoreNest Server。"
             }
-        } catch {
-            guard revision == generation, !Task.isCancelled else { return }
-            self.error = error is URLError ? "连接暂未完成，保留上次数据。请稍后下拉重试。" : "未能刷新，保留上次数据。\(error.localizedDescription)"
-        }
     }
 
     func act(service: BoardService, action: String) async {

@@ -31,6 +31,9 @@ struct RootView: View {
                     Tab("设备", systemImage: "cpu", value: AppTab.devices) {
                         DeviceNavigationView()
                     }
+                    Tab("设置", systemImage: "gearshape", value: AppTab.settings) {
+                        NavigationStack { AppSettingsView() }
+                    }
                 }.tabBarMinimizeBehavior(.never)
             } else {
                 TabView(selection: $navigation.selection) {
@@ -40,6 +43,8 @@ struct RootView: View {
                         .tabItem { Label("服务", systemImage: "square.stack.3d.up") }.tag(AppTab.services)
                     DeviceNavigationView()
                         .tabItem { Label("设备", systemImage: "cpu") }.tag(AppTab.devices)
+                    NavigationStack { AppSettingsView() }
+                        .tabItem { Label("设置", systemImage: "gearshape") }.tag(AppTab.settings)
                 }
             }
         }
@@ -72,13 +77,9 @@ struct RootView: View {
                 showWelcome = !hasSeenWelcome && store.demo
             }
         }
-        .task(id: scenePhase) {
+        .task(id: "\(scenePhase)-\(store.endpoint)") {
             guard scenePhase == .active, !LaunchMode.isUITesting else { return }
-            while !Task.isCancelled {
-                if !store.operating { await store.refresh() }
-                do { try await Task.sleep(nanoseconds: 10_000_000_000) }
-                catch { break }
-            }
+            await store.receiveLiveUpdates()
         }
     }
 }
