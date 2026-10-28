@@ -318,7 +318,9 @@ final class CoreNestUITests: XCTestCase {
         } else {
             // iOS 26 can present this as a native popover with outside-tap dismissal.
             // Tap a non-interactive status, never another management action.
-            app.staticTexts["运行中"].tap()
+            // The system popover intentionally makes underlying elements non-hittable
+            // to accessibility. Send the outside touch at the status' real screen point.
+            app.staticTexts["运行中"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
         XCTAssertFalse(app.buttons["确认停止"].exists)
         XCTAssertTrue(app.staticTexts["运行中"].exists)
