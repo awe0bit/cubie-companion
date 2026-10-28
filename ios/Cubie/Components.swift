@@ -232,6 +232,7 @@ struct ControlInteractionPreview: View {
                     pending = nil
                 }
             }
+            Button("取消", role: .cancel) { pending = nil }
         } message: { Text("仅修改预览状态。") }
     }
 }

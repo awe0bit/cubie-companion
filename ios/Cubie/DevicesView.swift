@@ -112,13 +112,14 @@ struct DeviceControlsView: View {
                         OperationFeedback(kind: "led", target: led.id)
                 }
                 } header: { Text("指示灯") } footer: {
-                    Text("点按右侧模式切换，菜单勾选表示设备已确认的模式。跟随系统会恢复系统灯光行为，不会关闭主板电源。")
+                    Text(store.demo ? "演示数据，仅展示状态，不会控制真实设备。"
+                         : store.capabilities?.role != "admin" ? "当前绑定为只读。控制权限需在主板端授权。"
+                         : store.capabilities?.ledControl != true ? "主板尚未启用灯光控制，或控制组件暂不可用。"
+                         : !management.leds.contains(where: { $0.controllable }) ? "当前指示灯不可由软件控制。"
+                         : "点按右侧模式切换，勾选表示设备已确认的模式。跟随系统会恢复系统灯光行为，不会关闭主板电源。")
                 }
-                if store.demo || store.capabilities?.role != "admin" {
-                    Section { Text(store.demo ? "演示数据，不会控制真实设备。" : "当前绑定为只读。控制权限需在主板端授权，App 不会自行提权。")
-                        .font(.subheadline).foregroundStyle(.secondary) }
-                } else if !store.managementReady {
-                    Section { Text(store.operating ? "正在执行操作，完成后可继续切换。" : "连接状态尚未确认，暂时不能修改灯光。")
+                if !store.demo && store.capabilities?.ledControl == true && !store.managementReady && !store.operating {
+                    Section { Text("连接状态尚未确认，暂时不能修改灯光。")
                         .font(.subheadline).foregroundStyle(.secondary) }
                 }
             } else {
@@ -186,7 +187,7 @@ struct ContainerDetailView: View {
                 }
             }
         }
-        .confirmationDialog("确认\(titles[pending ?? ""] ?? "操作")容器？", isPresented: Binding(
+        .confirmationDialog("确认\(titles[pending ?? ""] ?? "操作")\(container?.name ?? "容器")？", isPresented: Binding(
             get: { pending != nil }, set: { if !$0 { pending = nil } }
         ), titleVisibility: .visible) {
             if let action = pending, let container {
@@ -194,7 +195,8 @@ struct ContainerDetailView: View {
                     Task { await store.act(container: container, action: action) }; pending = nil
                 }
             }
-        } message: { Text("该应用会短暂中断，数据卷会保留。") }
+            Button("取消", role: .cancel) { pending = nil }
+        } message: { Text(pending == "start" ? "启动当前容器，不会删除数据卷。" : "该应用会短暂中断，数据卷会保留。") }
     }
 }
 

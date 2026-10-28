@@ -122,7 +122,7 @@ struct ServiceDetailView: View {
                 }
             }
         }
-        .confirmationDialog("确认\(actions[pendingAction ?? ""] ?? "操作")服务？", isPresented: Binding(
+        .confirmationDialog("确认\(actions[pendingAction ?? ""] ?? "操作")\(service?.name ?? "服务")？", isPresented: Binding(
             get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }
         ), titleVisibility: .visible) {
             if let action = pendingAction, let service {
@@ -131,6 +131,7 @@ struct ServiceDetailView: View {
                     pendingAction = nil
                 }
             }
-        } message: { Text("相关服务会短暂中断。") }
+            Button("取消", role: .cancel) { pendingAction = nil }
+        } message: { Text(pendingAction == "start" ? "启动当前服务。" : "相关服务会短暂中断，请确认没有正在执行的重要任务。") }
     }
 }
