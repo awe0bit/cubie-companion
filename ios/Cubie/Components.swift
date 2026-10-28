@@ -48,7 +48,12 @@ struct ManagedActions: View {
         if !stopped {
             Section {
                 Button(role: .destructive) { select("stop") } label: {
-                    Label("停止", systemImage: "stop.fill")
+                    Label {
+                        Text("停止")
+                    } icon: {
+                        Image(systemName: "stop.fill")
+                            .foregroundStyle(allowed("stop") ? Color.red : Color.secondary)
+                    }
                         .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                         .contentShape(Rectangle())
                 }
