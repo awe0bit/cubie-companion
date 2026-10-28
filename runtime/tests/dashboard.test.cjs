@@ -19,7 +19,10 @@ test('compact cards adapt to large text and never claim demo values are live', (
   const source = fs.readFileSync(require.resolve('../src/App.tsx'), 'utf8');
   assert.ok(source.includes('fontScale > 1.4'));
   assert.ok(source.includes('TrendCard data={dashboard}'));
-  assert.ok(source.includes('minHeight: 52'));
+  assert.ok(source.includes('minHeight: 64'));
+  assert.ok(source.includes('state && narrow &&'));
+  assert.ok(source.includes('<RowIcon'));
+  assert.ok(!source.includes("badge: 'SYS'"));
   assert.ok(source.includes("snapshot.live ? '已连接'"));
   assert.ok(source.includes("snapshot.demo ? '演示数据'"));
   assert.ok(!source.includes('setInterval'));

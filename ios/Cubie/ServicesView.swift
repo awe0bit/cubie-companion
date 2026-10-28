@@ -71,55 +71,57 @@ struct ServiceDetailView: View {
     private let actions = ["start": "启动", "stop": "停止", "restart": "重启"]
 
     var body: some View {
-        Page {
+        List {
             if let service {
-                Card {
-                    Label(service.name, systemImage: "shippingbox").font(.headline)
-                    InfoRow(title: "状态", value: service.stateText)
+                Section {
+                    ControlStatus(text: service.stateText, state: service.state)
+                    OperationFeedback(kind: "service", target: service.id)
+                } footer: {
+                    if store.demo || store.stale || store.error != nil { ConnectionBanner() }
+                }
+                if !store.demo && store.capabilities?.serviceControl == true && service.controllable {
+                    ManagedActions(stopped: ["inactive", "failed"].contains(service.state),
+                                   identifier: "service-action-",
+                                   allowed: { store.serviceActionAllowed(service, action: $0) },
+                                   select: { pendingAction = $0 })
+                    if store.controlsCoolingDown {
+                        Section { Text("操作间隔保护中，请稍候。启动、停止与重启共用 10 秒冷却。")
+                            .font(.subheadline).foregroundStyle(.secondary) }
+                    } else if store.stale || store.error != nil {
+                        Section { Text("连接状态尚未确认，操作已暂停。请恢复连接后重试。")
+                            .font(.subheadline).foregroundStyle(.orange) }
+                    }
+                } else {
+                    Section {
+                    Text(store.demo ? "示例服务，不会操作真实设备。"
+                         : !service.controllable ? "此服务受保护，不能从 App 启停。"
+                         : store.capabilities?.role != "admin" ? "当前绑定为只读，需要主板端授予管理权限。"
+                         : "主板尚未启用系统服务控制，或控制组件暂不可用。")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                Section("详细信息") {
                     InfoRow(title: "系统单元", value: service.unit)
                     if let sampled = store.servicesSampledAt, let date = Display.date(sampled) {
                         InfoRow(title: "采样时间", value: date.formatted(date: .omitted, time: .standard))
                     }
                 }
-                if !store.demo && store.capabilities?.serviceControl == true && service.controllable {
-                    Card {
-                        ForEach(["start", "restart", "stop"], id: \.self) { verb in
-                            Button(actions[verb] ?? verb, role: verb == "stop" ? .destructive : nil) {
-                                pendingAction = verb
-                            }.disabled(!store.serviceActionAllowed(service, action: verb))
-                                .accessibilityIdentifier("service-action-\(verb)")
-                        }
-                    }
-                    if store.controlsCoolingDown {
-                        Text("操作间隔保护中，请稍候。启动、停止与重启共用 10 秒冷却。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else if store.stale || store.error != nil {
-                        Text("连接状态尚未确认，操作已暂停。请恢复连接后重试。")
-                            .font(.caption).foregroundStyle(.orange)
-                    }
-                } else {
-                    Text(store.demo ? "示例服务，不会操作真实设备。"
-                         : !service.controllable ? "此服务受保护，不能从 App 启停。"
-                         : store.capabilities?.role != "admin" ? "当前绑定为只读，需要主板端授予管理权限。"
-                         : "主板尚未启用系统服务控制，或控制组件暂不可用。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                OperationFeedback(kind: "service", target: service.id)
-                if !store.demo {
-                    Button {
-                        Task { await store.refresh(manual: true) }
-                    } label: {
-                        Label(store.refreshing ? "正在刷新…" : "刷新状态", systemImage: "arrow.clockwise")
-                            .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity).padding(.vertical, 8)
-                    }.buttonStyle(.bordered).controlSize(.large)
-                        .buttonBorderShape(.roundedRectangle(radius: Layout.cardRadius))
-                        .disabled(store.refreshing).accessibilityIdentifier("service-refresh")
-                }
             } else {
                 ContentUnavailableView("服务已不在当前列表", systemImage: "shippingbox", description: Text("请返回服务列表刷新。"))
             }
         }
+        .modifier(GroupedListStyle())
+        .refreshable { await store.refresh(manual: true) }
         .navigationTitle(service?.name ?? "服务详情")
+        .toolbar {
+            if !store.demo {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await store.refresh(manual: true) } } label: {
+                        Label("刷新状态", systemImage: "arrow.clockwise")
+                    }.disabled(store.refreshing).accessibilityIdentifier("service-refresh")
+                }
+            }
+        }
         .confirmationDialog("确认\(actions[pendingAction ?? ""] ?? "操作")服务？", isPresented: Binding(
             get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }
         ), titleVisibility: .visible) {

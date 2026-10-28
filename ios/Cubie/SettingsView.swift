@@ -24,7 +24,7 @@ struct AppSettingsView: View {
                 }.accessibilityIdentifier("settings-privacy")
             }
         }
-        .modifier(SettingsListStyle())
+        .modifier(GroupedListStyle())
         .navigationTitle("设置").navigationBarTitleDisplayMode(.large)
     }
 }
@@ -70,17 +70,6 @@ private struct SettingsRow: View {
     }
 }
 
-private struct SettingsListStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .listStyle(.insetGrouped)
-            .environment(\.defaultMinListRowHeight, 48)
-            .listSectionSpacing(24)
-            .scrollContentBackground(.hidden)
-            .background(Color(uiColor: .systemGroupedBackground))
-    }
-}
-
 @MainActor
 private func connectionState(_ store: BoardStore) -> String {
     store.connectionText
@@ -117,7 +106,7 @@ private struct ConnectionSettingsView: View {
                 Text("自动模式：Wi-Fi 概览每秒，蜂窝概览、服务与设备每 5 秒，设置每 15 秒刷新。开启节能刷新，或系统低电量、低数据模式、手机过热时，每 15 秒刷新。后台暂停；趋势仅保留本次会话的数据，连接中断时保留缺口。")
             }
         }
-        .modifier(SettingsListStyle())
+        .modifier(GroupedListStyle())
         .navigationTitle("数据连接").navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -141,7 +130,7 @@ private struct PrivacySettingsView: View {
                 Text("远程连接经过你配置的 Cloudflare 服务。")
             }
         }
-        .modifier(SettingsListStyle())
+        .modifier(GroupedListStyle())
         .navigationTitle("隐私与安全").navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -153,41 +142,42 @@ struct SettingsView: View {
     @State private var error: String?
 
     var body: some View {
-        Page {
-            Card {
-                VStack(spacing: 12) {
-                    Image(systemName: "qrcode.viewfinder")
-                        .font(.system(size: 32, weight: .regular))
-                        .foregroundStyle(Brand.accent).accessibilityHidden(true)
-                    VStack(spacing: 8) {
-                        Text(store.demo ? "连接你的开发板" : "已绑定开发板").font(.headline)
-                        Text(store.demo ? "扫描电脑配对页上的二维码" : (store.status?.hostname ?? "等待设备状态"))
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
+        List {
+            if store.demo {
+                Section {
+                    Label("连接你的开发板", systemImage: "qrcode.viewfinder").font(.headline)
                     Button { showPairing = true } label: {
-                        Label(store.demo ? "扫码绑定" : "扫描新设备", systemImage: "qrcode")
-                            .font(.headline).foregroundStyle(Brand.onAccent)
-                            .frame(maxWidth: .infinity).padding(.vertical, 6)
+                        Label("扫码绑定", systemImage: "qrcode")
+                            .foregroundStyle(Brand.onAccent)
+                            .frame(maxWidth: .infinity, minHeight: 32)
                     }
                     .buttonStyle(.borderedProminent).controlSize(.large)
-                    .buttonBorderShape(.roundedRectangle(radius: Layout.cardRadius))
                     .accessibilityIdentifier("scan-pair")
+                } footer: {
                     Text("扫码后核对六位码，在电脑上批准绑定。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity).padding(.vertical, 4)
-            }
-            if !store.demo {
-                Card {
-                    InfoRow(title: "设备地址", value: store.endpoint)
-                    Button("解除本机绑定", role: .destructive) { confirmForget = true }
-                        .font(.subheadline.weight(.medium)).accessibilityIdentifier("forget-device")
                 }
+            } else {
+                Section("当前设备") {
+                    Label(store.status?.hostname ?? "已绑定开发板", systemImage: "cpu")
+                        .font(.headline).textSelection(.enabled)
+                    InfoRow(title: "连接状态", value: store.connectionText)
+                    InfoRow(title: "设备地址", value: store.endpoint)
+                }
+                Section {
+                    Button { showPairing = true } label: {
+                        Label("更换绑定设备…", systemImage: "qrcode.viewfinder")
+                            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                    }.accessibilityIdentifier("scan-pair")
+                } footer: { Text("扫描另一台设备的二维码，批准后替换当前绑定。") }
+                Section {
+                    Button("解除本机绑定", role: .destructive) { confirmForget = true }
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                        .accessibilityIdentifier("forget-device")
+                } footer: { Text("仅移除本机钥匙串中的凭据，不影响主板运行。") }
             }
-            if let error { Text(error).font(.caption).foregroundStyle(.orange) }
-            Text("凭据仅保存在本机钥匙串。")
-                .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 4)
+            if let error { Section { Text(error).font(.subheadline).foregroundStyle(.orange) } }
         }
+        .modifier(GroupedListStyle())
         .navigationTitle("绑定")
         .sheet(isPresented: $showPairing) { PairingView() }
         .confirmationDialog("解除这台 iPhone 的绑定？", isPresented: $confirmForget, titleVisibility: .visible) {

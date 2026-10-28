@@ -1,10 +1,11 @@
 import XCTest
 
 final class CoreNestUITests: XCTestCase {
-    private func launch(appearance: String = "light", largeText: Bool = false) -> XCUIApplication {
+    private func launch(appearance: String = "light", largeText: Bool = false, arguments: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--preview-appearance", appearance]
+        app.launchArguments += arguments
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
@@ -288,6 +289,34 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["蓝色状态灯"].exists)
         XCTAssertTrue(app.staticTexts["跟随系统"].exists)
         XCTAssertFalse(app.buttons["常亮"].exists)
+    }
+
+    func testControlModesUseCheckedMenuAndStopRequiresConfirmation() {
+        let app = launch(appearance: "dark", arguments: ["--preview-tab", "devices", "--preview-detail", "controls"])
+        XCTAssertTrue(app.navigationBars["控件交互预览"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["preview-action-start"].exists, "Running service must not show an irrelevant start button")
+        XCTAssertTrue(app.buttons["preview-action-restart"].isHittable)
+        let picker = app.descendants(matching: .any)["preview-led-mode"].firstMatch
+        picker.tap()
+        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["跟随系统"].isEnabled, "Selected mode is selected, not disabled")
+        snapshot("led-mode-menu-dark")
+        app.buttons["关闭"].tap()
+        XCTAssertEqual(app.staticTexts["preview-led-readback"].label, "off")
+        picker.tap()
+        XCTAssertTrue(app.buttons["常亮"].waitForExistence(timeout: 3))
+        app.buttons["常亮"].tap()
+        XCTAssertEqual(app.staticTexts["preview-led-readback"].label, "on")
+        app.buttons["preview-action-stop"].tap()
+        XCTAssertTrue(app.buttons["确认停止"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["运行中"].exists, "Opening confirmation cannot change state")
+        app.buttons["取消"].tap()
+        XCTAssertTrue(app.buttons["preview-action-restart"].exists)
+        app.buttons["preview-action-stop"].tap()
+        app.buttons["确认停止"].tap()
+        XCTAssertTrue(app.buttons["preview-action-start"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["preview-action-stop"].exists)
+        snapshot("controls-stopped-dark")
     }
 
     func testHardwareInventoryAndRealDetailNavigation() {

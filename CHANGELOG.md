@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.3 — Native control hierarchy
+
+- Use the same inset-grouped system layout for binding, LEDs and service/container
+  details as Settings. Distinguish status, management and technical information.
+- Show start only for stopped services, separate destructive stop from restart,
+  and keep confirmation, permission/freshness checks and real operation feedback.
+- Move refresh to the navigation toolbar and pull gesture, not a dominant action.
+- Replace LED action pills with a native checked mode menu. Reversible mode changes
+  need no extra confirmation; selection still reflects device readback, not intent.
+- Keep bound identity compact, make replacement scanning secondary, and isolate unbinding.
+- Replace technical text badges with consistent vector icons. Keep names and actual
+  states prominent; units/images remain searchable and available in detail pages.
+- Native changes require IPA 0.9.3 (14); compatible page runtime remains 0.9.0.
+- Add a DEBUG-only, explicitly simulated controls harness for menu and destructive
+  confirmation UI tests. It never connects to a board and is excluded from release IPAs.
+
 ## 0.9.2 — Focused settings, reliable controls and adaptive connectivity
 
 - Replace oversized mixed-content Settings cards with two native inset-grouped

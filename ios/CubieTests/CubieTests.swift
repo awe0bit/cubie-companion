@@ -3,6 +3,11 @@ import UIKit
 @testable import Cubie
 
 final class CubieTests: XCTestCase {
+    func testUnknownLEDModeIsNeverReportedAsOff() {
+        XCTAssertEqual(BoardLED(id: "fixture", name: "LED", mode: "unavailable", controllable: false).modeText, "未知模式")
+        XCTAssertEqual(BoardLED(id: "fixture", name: "LED", mode: "off", controllable: true).modeText, "已关闭")
+    }
+
     @MainActor func testBackgroundLeaseExpirationFinishesSynchronouslyAndOnlyOnce() {
         var cancellations = 0
         let lease = ControlBackgroundLease { cancellations += 1 }

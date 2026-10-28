@@ -16,6 +16,8 @@ test('targeted snapshots do not wake other roots and legacy broadcasts still wor
 test('control badges reflect permissions without granting them', () => {
   const groups = groupedServices([{ id: 'panel', name: 'Panel', unit: 'panel.service', state: 'active', controllable: false }], [], '', '系统');
   assert.ok(groups[0].items[0].subtitle.endsWith('只读'));
+  assert.ok(!groups[0].items[0].subtitle.includes('panel.service'), 'Technical unit stays searchable, not primary list copy');
+  assert.equal(groups[0].badge, 'system');
 });
 const services = [{ id: 'panel', name: '1Panel', unit: '1panel.service', state: 'active' }];
 const containers = [{ id: 'fixture', name: 'demo-blog', image: 'example/blog:1', state: 'running' }];

@@ -136,7 +136,14 @@ struct BoardLED: Codable, Identifiable {
     let name: String
     let mode: String
     let controllable: Bool
-    var modeText: String { mode == "system" ? "跟随系统" : mode == "on" ? "常亮" : "已关闭" }
+    var modeText: String {
+        switch mode {
+        case "system": return "跟随系统"
+        case "on": return "常亮"
+        case "off": return "已关闭"
+        default: return "未知模式"
+        }
+    }
 }
 
 struct BoardContainer: Codable, Identifiable {

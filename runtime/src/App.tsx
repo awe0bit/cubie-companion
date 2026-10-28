@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { send, subscribe } from './native';
 import { startUpdates } from './updates';
@@ -53,12 +54,16 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
   const link = (title: string, subtitle: string, action: string, id: string, deviceID?: string, badge?: string, state?: string) => (
     <Pressable key={id} accessibilityRole="button" accessibilityLabel={`${title}${state ? `，${stateText(state)}` : ''}`} testID={id} onPress={() => act(action, deviceID)}
       style={({ pressed }) => [styles.link, { opacity: pressed ? .55 : 1 }]}>
-      {badge && <View style={[styles.icon, { backgroundColor: colors.background }]}><Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{badge}</Text></View>}
+      {badge && <View style={[styles.icon, { backgroundColor: colors.background }]}>
+        <RowIcon kind={badge} color={colors.quiet} />
+      </View>}
       <View style={styles.linkText}>
-        <Text numberOfLines={narrow ? undefined : 1} style={{ color: colors.ink, fontSize: 15, fontWeight: '600' }}>{title}</Text>
-        {!!subtitle && <Text numberOfLines={narrow ? undefined : 1} style={{ color: colors.quiet, fontSize: 12 }}>{subtitle}</Text>}
+        <Text numberOfLines={narrow ? undefined : 1} style={{ color: colors.ink, fontSize: 17, fontWeight: '500' }}>{title}</Text>
+        {!!subtitle && <Text numberOfLines={narrow ? undefined : 1} style={{ color: colors.quiet, fontSize: 13 }}>{subtitle}</Text>}
+        {state && narrow && label(stateText(state), true, 13)}
       </View>
-      {state && <View style={styles.status}><View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: ['active', 'running'].includes(state) ? colors.success : colors.warning }} />{label(stateText(state), true, 11)}</View>}
+      {state && !narrow && <View style={styles.status}><View style={{ width: 5, height: 5, borderRadius: 3,
+        backgroundColor: ['active', 'running'].includes(state) ? colors.success : ['failed', 'dead'].includes(state) ? colors.warning : colors.quiet }} />{label(stateText(state), true, 12)}</View>}
       <Text accessibilityElementsHidden style={{ color: colors.quiet, fontSize: 19 }}>›</Text>
     </Pressable>
   );
@@ -114,7 +119,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
       </>}
       {route === 'services' && <>
         <View style={styles.heading}>
-          {label(query ? `搜索“${query}”` : filter === '全部' ? '全部服务' : filter, false, 15)}
+          {label(query ? `搜索“${query}”` : filter === '全部' ? '全部服务' : filter, true, 13)}
           {label(`${groups.reduce((sum, group) => sum + group.items.length, 0)} 项`, true, 12)}
         </View>
         {!nativeSearch && <TextInput accessibilityLabel="搜索服务" testID="service-search" defaultValue="" onChangeText={setQuery} placeholder="搜索名称、镜像或系统单元"
@@ -144,7 +149,7 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
             {label([hardware.board.architecture, hardware.board.kernel].filter(Boolean).join(' · '), true, 11)}
           </>)}
           {(snapshot.inventoryError || snapshot.inventoryStale) && <Text style={{ color: colors.warning, fontSize: 12 }}>{snapshot.inventoryError ?? '硬件信息已过期，等待重新连接。'}</Text>}
-          {([['storage', '存储', 'SD'], ['usb', 'USB 设备', 'USB'], ['network', '网络接口', 'NET'], ['bluetooth', '蓝牙控制器', 'BT']] as const).map(([category, title, badge]) => {
+          {([['storage', '存储', 'storage'], ['usb', 'USB 设备', 'usb'], ['network', '网络接口', 'network'], ['bluetooth', '蓝牙控制器', 'bluetooth']] as const).map(([category, title, badge]) => {
             const devices = hardware.devices.filter(d => d.category === category);
             return devices.length ? <View key={category} style={{ gap: 7 }}><View style={styles.heading}>{label(title, true, 12)}{label(String(devices.length), true, 11)}</View>
               {card(devices.map((d, i) => <React.Fragment key={d.id}>
@@ -159,6 +164,25 @@ export default function App({ route, client, snapshotJSON, appearance, disableRe
     </View>
   </ScrollView>;
 }
+
+// Code-native vector icons share one stroke and never require fonts or new native modules.
+function RowIcon({ kind, color }: { kind: string; color: string }) {
+  const paths: Record<string, string> = {
+    docker: 'M12 3 21 8v9l-9 5-9-5V8l9-5ZM3 8l9 5 9-5M12 13v9M7.5 5.5l9 5',
+    system: 'M8 5V3m8 2V3M8 21v-2m8 2v-2M5 8H3m2 8H3m18-8h-2m2 8h-2M9 9h6v6H9Z',
+    storage: 'M5 4h14v16H5ZM8 8h8M8 12h8',
+    usb: 'M12 21V4m-3 3 3-4 3 4M12 16l-6-4V9m6 4 6-3V6',
+    network: 'M12 8v5M5 17v-4h14v4',
+    bluetooth: 'M7 7l10 10-5 4V3l5 4L7 17',
+  };
+  return <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.6}
+    strokeLinecap="round" strokeLinejoin="round" accessible={false} accessibilityElementsHidden>
+    {kind === 'system' && <Rect x={5} y={5} width={14} height={14} rx={3} />}
+    {kind === 'network' && <><Rect x={9} y={2} width={6} height={6} rx={1} /><Rect x={2} y={17} width={6} height={5} rx={1} /><Rect x={16} y={17} width={6} height={5} rx={1} /></>}
+    {kind === 'storage' && <Circle cx={16} cy={17} r={.6} />}
+    <Path d={paths[kind] ?? 'M5 12h14M12 5v14'} />
+  </Svg>;
+}
 const styles = StyleSheet.create({
   page: { paddingHorizontal: layout.inset, paddingTop: 4, alignItems: 'center' },
   content: { width: '100%', maxWidth: 720, gap: layout.gap },
@@ -168,10 +192,10 @@ const styles = StyleSheet.create({
   board: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', padding: 4 },
   metric: { paddingHorizontal: 10, paddingVertical: 8, gap: 3 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 52, paddingVertical: 8, paddingHorizontal: 12 },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 10, paddingHorizontal: 14 },
   linkText: { flex: 1, gap: 3 },
-  icon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  status: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 68 },
+  icon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   search: { borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, fontSize: 14, minHeight: 42 },
   filters: { flexDirection: 'row', gap: 7 },
   filter: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, minHeight: 34, justifyContent: 'center' },

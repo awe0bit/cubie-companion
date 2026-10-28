@@ -36,6 +36,11 @@ def main():
         call('io',args.device,'screenshot',str(args.output/('binding-'+appearance+'.png')))
     for appearance in ['light','dark']:
         call('terminate',args.device,BUNDLE,check=False)
+        call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','devices','--preview-detail','controls','--preview-appearance',appearance)
+        time.sleep(10)
+        call('io',args.device,'screenshot',str(args.output/('controls-preview-'+appearance+'.png')))
+    for appearance in ['light','dark']:
+        call('terminate',args.device,BUNDLE,check=False)
         call('launch',args.device,BUNDLE,'--ui-testing','--preview-appearance',appearance)
         time.sleep(10)
         call('io',args.device,'screenshot',str(args.output/('welcome-'+appearance+'.png')))
@@ -49,7 +54,7 @@ def main():
         call('launch',args.device,BUNDLE,'--ui-testing','--preview-tab','settings','--preview-detail','developer','--preview-appearance',appearance)
         time.sleep(10)
         call('io',args.device,'screenshot',str(args.output/('developer-'+appearance+'.png')))
-    print('Captured 15 real simulator screenshots; all displayed data are demo fixtures.')
+    print('Captured 17 real simulator screenshots; all displayed data are demo fixtures; controls-preview is explicitly simulated.')
 
 
 if __name__=='__main__':main()
