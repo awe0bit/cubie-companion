@@ -108,6 +108,10 @@ struct DeviceControlsView: View {
                             }
                         } else {
                             LabeledContent(led.name, value: led.modeText)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(led.name)
+                                .accessibilityValue(led.modeText)
+                                .accessibilityIdentifier("led-state-\(led.id)")
                         }
                         OperationFeedback(kind: "led", target: led.id)
                 }

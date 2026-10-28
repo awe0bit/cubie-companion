@@ -286,8 +286,10 @@ final class CoreNestUITests: XCTestCase {
         app.tabBars.buttons["设备"].tap()
         app.buttons["device-controls"].tap()
         XCTAssertTrue(app.navigationBars["设备控制"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["蓝色状态灯"].exists)
-        XCTAssertTrue(app.staticTexts["跟随系统"].exists)
+        let state = app.descendants(matching: .any)["led-state-demo:blue"].firstMatch
+        XCTAssertTrue(state.waitForExistence(timeout: 5))
+        XCTAssertEqual(state.label, "蓝色状态灯")
+        XCTAssertEqual(state.value as? String, "跟随系统")
         XCTAssertFalse(app.buttons["常亮"].exists)
     }
 
