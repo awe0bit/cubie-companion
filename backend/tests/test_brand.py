@@ -93,6 +93,9 @@ class BrandTests(unittest.TestCase):
         self.assertIn('更换绑定设备…',settings)
         self.assertIn('if !stopped {',components)
         self.assertIn('role: .destructive',components)
+        for source in (services, devices, settings):
+            self.assertIn('.alert(',source)
+            self.assertIn('Button("取消", role: .cancel)',source)
 
     def test_hidden_runtime_roots_do_not_reserialize_snapshot_props(self):
         source=(ROOT/'ios/Cubie/RuntimeHost.swift').read_text(encoding='utf-8')

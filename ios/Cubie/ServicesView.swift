@@ -123,9 +123,9 @@ struct ServiceDetailView: View {
                 }
             }
         }
-        .confirmationDialog("确认\(actions[pendingAction ?? ""] ?? "操作")\(service?.name ?? "服务")？", isPresented: Binding(
+        .alert("确认\(actions[pendingAction ?? ""] ?? "操作")\(service?.name ?? "服务")？", isPresented: Binding(
             get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }
-        ), titleVisibility: .visible) {
+        )) {
             if let action = pendingAction, let service {
                 Button("确认\(actions[action] ?? action)", role: action == "stop" ? .destructive : nil) {
                     Task { await store.act(service: service, action: action) }

@@ -193,9 +193,9 @@ struct ContainerDetailView: View {
                 }
             }
         }
-        .confirmationDialog("确认\(titles[pending ?? ""] ?? "操作")\(container?.name ?? "容器")？", isPresented: Binding(
+        .alert("确认\(titles[pending ?? ""] ?? "操作")\(container?.name ?? "容器")？", isPresented: Binding(
             get: { pending != nil }, set: { if !$0 { pending = nil } }
-        ), titleVisibility: .visible) {
+        )) {
             if let action = pending, let container {
                 Button("确认\(titles[action] ?? action)", role: action == "stop" ? .destructive : nil) {
                     Task { await store.act(container: container, action: action) }; pending = nil

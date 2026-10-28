@@ -181,11 +181,12 @@ struct SettingsView: View {
         .navigationTitle("绑定")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPairing) { PairingView() }
-        .confirmationDialog("解除这台 iPhone 的绑定？", isPresented: $confirmForget, titleVisibility: .visible) {
+        .alert("解除这台 iPhone 的绑定？", isPresented: $confirmForget) {
             Button("解除绑定", role: .destructive) {
                 do { try store.forget() }
                 catch { self.error = error.localizedDescription }
             }
+            Button("取消", role: .cancel) { confirmForget = false }
         } message: {
             Text("会删除本机凭据，不影响主板运行。服务器上的设备授权需在设备端撤销。")
         }

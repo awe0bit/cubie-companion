@@ -230,9 +230,9 @@ struct ControlInteractionPreview: View {
         .modifier(GroupedListStyle())
         .navigationTitle("控件交互预览")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("确认\(titles[pending ?? ""] ?? "操作")？", isPresented: Binding(
+        .alert("确认\(titles[pending ?? ""] ?? "操作")？", isPresented: Binding(
             get: { pending != nil }, set: { if !$0 { pending = nil } }
-        ), titleVisibility: .visible) {
+        )) {
             if let action = pending {
                 Button("确认\(titles[action] ?? action)", role: action == "stop" ? .destructive : nil) {
                     if action != "restart" { stopped = action == "stop" }

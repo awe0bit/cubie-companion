@@ -311,17 +311,9 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertEqual(picker.value as? String, "常亮")
         app.buttons["preview-action-stop"].tap()
         XCTAssertTrue(app.buttons["确认停止"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["运行中"].exists, "Opening confirmation cannot change state")
         snapshot("stop-confirmation-dark")
-        if app.buttons["取消"].exists {
-            app.buttons["取消"].tap()
-        } else {
-            // iOS 26 can present this as a native popover with outside-tap dismissal.
-            // Tap a non-interactive status, never another management action.
-            // The system popover intentionally makes underlying elements non-hittable
-            // to accessibility. Send the outside touch at the status' real screen point.
-            app.staticTexts["运行中"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        }
+        XCTAssertTrue(app.alerts.buttons["取消"].isHittable)
+        app.alerts.buttons["取消"].tap()
         XCTAssertFalse(app.buttons["确认停止"].exists)
         XCTAssertTrue(app.staticTexts["运行中"].exists)
         XCTAssertTrue(app.buttons["preview-action-restart"].exists)
