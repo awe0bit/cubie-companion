@@ -135,6 +135,7 @@ struct DeviceControlsView: View {
         .modifier(GroupedListStyle())
         .refreshable { await store.refresh(manual: true) }
         .navigationTitle("设备控制")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -182,6 +183,7 @@ struct ContainerDetailView: View {
         .modifier(GroupedListStyle())
         .refreshable { await store.refresh(manual: true) }
         .navigationTitle(container?.name ?? "Docker 应用")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !store.demo {
                 ToolbarItem(placement: .topBarTrailing) {

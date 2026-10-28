@@ -9,7 +9,6 @@ struct GroupedListStyle: ViewModifier {
             .listSectionSpacing(24)
             .scrollContentBackground(.hidden)
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -53,6 +52,7 @@ struct ManagedActions: View {
                         .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                         .contentShape(Rectangle())
                 }
+                .tint(.red)
                 .disabled(!allowed("stop"))
                 .accessibilityIdentifier("\(identifier)stop")
             } footer: { Text("停止后服务将不可用；不会删除数据。") }
@@ -86,6 +86,8 @@ struct LEDModePicker: View {
             .pickerStyle(.menu)
             .disabled(!enabled)
             .accessibilityIdentifier(identifier)
+            .accessibilityLabel(name)
+            .accessibilityValue(["system": "跟随系统", "on": "常亮", "off": "关闭"][mode] ?? "未知模式")
             .accessibilityHint(busy ? "正在确认设备状态，请稍候" : "选择指示灯模式")
         }
     }
@@ -218,11 +220,11 @@ struct ControlInteractionPreview: View {
             Section("指示灯") {
                 LEDModePicker(name: "蓝色状态灯", mode: mode, enabled: true, busy: false,
                               identifier: "preview-led-mode") { mode = $0 }
-                Text(mode).accessibilityIdentifier("preview-led-readback").font(.caption).foregroundStyle(.secondary)
             }
         }
         .modifier(GroupedListStyle())
         .navigationTitle("控件交互预览")
+        .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("确认\(titles[pending ?? ""] ?? "操作")？", isPresented: Binding(
             get: { pending != nil }, set: { if !$0 { pending = nil } }
         ), titleVisibility: .visible) {

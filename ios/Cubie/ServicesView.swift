@@ -113,6 +113,7 @@ struct ServiceDetailView: View {
         .modifier(GroupedListStyle())
         .refreshable { await store.refresh(manual: true) }
         .navigationTitle(service?.name ?? "服务详情")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !store.demo {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -179,6 +179,7 @@ struct SettingsView: View {
         }
         .modifier(GroupedListStyle())
         .navigationTitle("绑定")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPairing) { PairingView() }
         .confirmationDialog("解除这台 iPhone 的绑定？", isPresented: $confirmForget, titleVisibility: .visible) {
             Button("解除绑定", role: .destructive) {

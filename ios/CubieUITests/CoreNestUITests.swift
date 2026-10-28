@@ -304,15 +304,24 @@ final class CoreNestUITests: XCTestCase {
         XCTAssertTrue(app.buttons["跟随系统"].isEnabled, "Selected mode is selected, not disabled")
         snapshot("led-mode-menu-dark")
         app.buttons["关闭"].tap()
-        XCTAssertEqual(app.staticTexts["preview-led-readback"].label, "off")
+        XCTAssertEqual(picker.value as? String, "关闭")
         picker.tap()
         XCTAssertTrue(app.buttons["常亮"].waitForExistence(timeout: 3))
         app.buttons["常亮"].tap()
-        XCTAssertEqual(app.staticTexts["preview-led-readback"].label, "on")
+        XCTAssertEqual(picker.value as? String, "常亮")
         app.buttons["preview-action-stop"].tap()
         XCTAssertTrue(app.buttons["确认停止"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["运行中"].exists, "Opening confirmation cannot change state")
-        app.buttons["取消"].tap()
+        snapshot("stop-confirmation-dark")
+        if app.buttons["取消"].exists {
+            app.buttons["取消"].tap()
+        } else {
+            // iOS 26 can present this as a native popover with outside-tap dismissal.
+            // Tap a non-interactive status, never another management action.
+            app.staticTexts["运行中"].tap()
+        }
+        XCTAssertFalse(app.buttons["确认停止"].exists)
+        XCTAssertTrue(app.staticTexts["运行中"].exists)
         XCTAssertTrue(app.buttons["preview-action-restart"].exists)
         app.buttons["preview-action-stop"].tap()
         app.buttons["确认停止"].tap()
