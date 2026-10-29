@@ -3,6 +3,62 @@ import UIKit
 @testable import Cubie
 
 final class CubieTests: XCTestCase {
+    @MainActor private func reconnectStore(holdStream: Bool) throws -> BoardStore {
+        let caps = try JSONDecoder().decode(Capabilities.self, from: Data(#"{"apiVersion":1,"role":"viewer","serviceControl":false,"deviceReboot":false,"rawLogs":false,"dockerControl":false,"ledControl":false,"powerMeasurement":false,"fanRPM":false,"managementInventory":true,"deviceInventory":true,"snapshotBundle":true,"liveSnapshots":true,"adaptiveStreaming":true}"#.utf8))
+        let body = try JSONEncoder().encode(DashboardSnapshot(status: Demo.status,
+            services: ServiceList(sampledAt: Demo.status.sampledAt, services: Demo.services),
+            network: Demo.network, capabilities: caps, management: Demo.management, inventory: Demo.inventory))
+        ReconnectProtocol.prepare(body, holdStream: holdStream)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ReconnectProtocol.self]
+        let client = try APIClient(ConnectionCredentials(baseURL: "https://resume.example.com",
+            apiToken: String(repeating: "t", count: 40), accessClientID: "", accessClientSecret: ""), configuration: configuration)
+        return BoardStore(testClient: client)
+    }
+
+    @MainActor func testWarmResumeGetsFreshHTTPBeforeWaitingForStream() async throws {
+        let store = try reconnectStore(holdStream: true)
+        await store.refresh()
+        store.pauseConnection()
+        let task = Task { await store.receiveLiveUpdates(interval: 5) }
+        defer { task.cancel(); ReconnectProtocol.releaseStream() }
+        for _ in 0..<100 {
+            if ReconnectProtocol.events > 0 { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(ReconnectProtocol.events, 1)
+        XCTAssertEqual(ReconnectProtocol.snapshots, 2, "Cached capabilities must not skip the foreground HTTP read")
+        XCTAssertEqual(ReconnectProtocol.lastTimeout, 4)
+        XCTAssertEqual(store.connectionPhase, .polling, "Fresh HTTP data is usable while SSE headers are still pending")
+        XCTAssertFalse(store.stale)
+        XCTAssertFalse(store.live, "A successful HTTP read must not pretend SSE is live")
+        ReconnectProtocol.releaseStream()
+        await task.value
+        XCTAssertEqual(store.connectionPhase, .blocked, "Authentication rejection must still stop retries")
+    }
+
+    @MainActor func testColdConnectionOnlyBootstrapsOnceAndStopsOnAuthFailure() async throws {
+        let store = try reconnectStore(holdStream: false)
+        await store.receiveLiveUpdates()
+        XCTAssertEqual(ReconnectProtocol.snapshots, 1)
+        XCTAssertEqual(ReconnectProtocol.events, 1)
+        XCTAssertEqual(store.connectionPhase, .blocked)
+    }
+
+    @MainActor func testInitialUnchangedPathDoesNotCancelStartupButLaterRouteChangesDo() {
+        let environment = ConnectionEnvironment(monitoring: false)
+        environment.updatePath(available: true, constrained: false, expensive: false)
+        XCTAssertEqual(environment.revision, 0)
+        environment.updatePath(available: true, constrained: false, expensive: false)
+        XCTAssertEqual(environment.revision, 1, "A later route notification must still reconnect")
+        environment.updatePath(available: true, constrained: false, expensive: true)
+        XCTAssertEqual(environment.revision, 2)
+        XCTAssertTrue(environment.expensive)
+        let cellular = ConnectionEnvironment(monitoring: false)
+        cellular.updatePath(available: true, constrained: false, expensive: true)
+        XCTAssertEqual(cellular.revision, 1, "The first observation must still apply a different cellular policy")
+    }
+
     func testUnknownLEDModeIsNeverReportedAsOff() {
         XCTAssertEqual(BoardLED(id: "fixture", name: "LED", mode: "unavailable", controllable: false).modeText, "未知模式")
         XCTAssertEqual(BoardLED(id: "fixture", name: "LED", mode: "off", controllable: true).modeText, "已关闭")
@@ -345,6 +401,55 @@ private final class SnapshotProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+private final class ReconnectProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var body = Data()
+    private static var held: ReconnectProtocol?
+    private static var holding = false
+    private static var snapshotCount = 0, eventCount = 0
+    private static var timeout: TimeInterval = 0
+    static var snapshots: Int { lock.lock(); defer { lock.unlock() }; return snapshotCount }
+    static var events: Int { lock.lock(); defer { lock.unlock() }; return eventCount }
+    static var lastTimeout: TimeInterval { lock.lock(); defer { lock.unlock() }; return timeout }
+    static func prepare(_ value: Data, holdStream: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        body = value; holding = holdStream; held = nil
+        snapshotCount = 0; eventCount = 0; timeout = 0
+    }
+    static func releaseStream() {
+        lock.lock(); let pending = held; held = nil; lock.unlock()
+        pending?.respond(code: 403, body: Data(), mime: "text/plain")
+    }
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "resume.example.com" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let stream = request.url?.path == "/v1/events"
+        Self.lock.lock()
+        if stream { Self.eventCount += 1 }
+        else { Self.snapshotCount += 1; Self.timeout = request.timeoutInterval }
+        let body = Self.body
+        let hold = stream && Self.holding
+        if hold { Self.held = self }
+        Self.lock.unlock()
+        guard request.httpMethod == "GET", stream || request.url?.path == "/v1/snapshot" else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL)); return
+        }
+        if !hold { respond(code: stream ? 403 : 200, body: stream ? Data() : body,
+                           mime: stream ? "text/plain" : "application/json") }
+    }
+    private func respond(code: Int, body: Data, mime: String) {
+        let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil,
+                                       headerFields: ["Content-Type": mime])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        if Self.held === self { Self.held = nil }
+    }
 }
 
 private final class ControlProtocol: URLProtocol {

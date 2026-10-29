@@ -188,7 +188,7 @@ final class BoardStore: ObservableObject {
         showDemo()
     }
 
-    func refresh(manual: Bool = false) async {
+    func refresh(manual: Bool = false, timeout: TimeInterval? = nil) async {
         guard !demo else { return }
         let revision = generation
         let epoch = readEpoch
@@ -196,15 +196,15 @@ final class BoardStore: ObservableObject {
         defer { if manual && revision == generation && epoch == readEpoch { userRefreshing = false } }
         // Pull-to-refresh joins an in-flight poll instead of returning without doing anything.
         if let refreshTask { await refreshTask.value; return }
-        let task = Task { await self.performRefresh() }
+        let task = Task { await self.performRefresh(timeout: timeout) }
         refreshTask = task
         await task.value
         if revision == generation && epoch == readEpoch { refreshTask = nil }
     }
 
-    private func loadSnapshot(_ client: APIClient) async throws -> DashboardSnapshot {
+    private func loadSnapshot(_ client: APIClient, timeout: TimeInterval?) async throws -> DashboardSnapshot {
         if !bundleUnsupported {
-            do { return try await client.get("snapshot") }
+            do { return try await client.get("snapshot", timeout: timeout) }
             catch ConnectionError.http(404) { bundleUnsupported = true }
         }
         // Compatibility only: current servers supply one bounded snapshot request.
@@ -221,17 +221,22 @@ final class BoardStore: ObservableObject {
                                  capabilities: capabilities, management: management, inventory: inventory)
     }
 
-    private func performRefresh() async {
+    private func performRefresh(timeout: TimeInterval?) async {
         guard !demo, !refreshing, let client else { return }
         refreshing = true
         let revision = generation
         let epoch = readEpoch
         defer { if revision == generation && epoch == readEpoch { refreshing = false } }
         do {
-            let bundle = try await loadSnapshot(client)
+            let bundle = try await loadSnapshot(client, timeout: timeout)
             guard revision == generation, epoch == readEpoch, !Task.isCancelled else { return }
             try apply(bundle)
             refreshFailure = nil
+            // A valid HTTP snapshot is already a usable connection. SSE is an upgrade,
+            // not a prerequisite for displaying fresh state or enabling safe controls.
+            if !live && ![ConnectionPhase.paused, .offline, .blocked].contains(connectionPhase) {
+                connectionPhase = .polling
+            }
         } catch {
             guard revision == generation, epoch == readEpoch, !Task.isCancelled else { return }
             refreshFailure = error
@@ -265,7 +270,9 @@ final class BoardStore: ObservableObject {
         sampleInterval = interval
         connectionPhase = .connecting
         var failures = 0
-        if capabilities == nil { await refresh() }
+        // Always refresh on foreground/path recovery, including a warm resume with
+        // cached capabilities. Never make the first visible update wait on SSE.
+        await refresh(timeout: 4)
         guard revision == generation, epoch == readEpoch, !Task.isCancelled else { return }
         if let failure = refreshFailure, ConnectionPolicy.blocksAutomaticRetry(failure) {
             connectionPhase = .blocked; return
@@ -310,7 +317,9 @@ final class BoardStore: ObservableObject {
                 let delay = ConnectionPolicy.retryDelay(failures: failures, jitter: Double.random(in: 0...1))
                 do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
                 catch { return }
-                if stale { await refresh() }
+                // Keep ordinary reads usable even if the stream cannot be established.
+                // The backoff above still bounds requests; mutations are never retried.
+                await refresh(timeout: 4)
             }
         }
     }

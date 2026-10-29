@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.4 — Foreground connection recovery
+
+- Always request a fresh HTTP snapshot when entering the foreground or recovering
+  a network path, even when capabilities are cached. Show usable HTTP data without
+  waiting for SSE's first frame; only a received event is labeled live streaming.
+- Use a shorter startup request timeout and foreground-owned network recovery,
+  rather than leaving an older read waiting for connectivity.
+- Keep the connection owner stable when switching between pages with the same
+  sampling cadence. An identical initial path observation no longer cancels startup;
+  subsequent route changes still reconnect, including changes with identical flags.
+- After a stream failure, retain bounded backoff and refresh HTTP data on recovery.
+- Preserve role checks, no mutation retries, cancellation epochs and background pause.
+- Host-only update: native IPA 0.9.4 (15). The unchanged embedded page package remains
+  0.9.3 and its OTA compatibility runtime remains 0.9.0; no new server image is needed.
+
 ## 0.9.3 — Native control hierarchy
 
 - Use the same inset-grouped system layout for binding, LEDs and service/container

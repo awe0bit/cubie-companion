@@ -36,16 +36,15 @@ final class ConnectionEnvironment: ObservableObject {
     private(set) var thermal = ProcessInfo.processInfo.thermalState
     private let monitor = NWPathMonitor()
     private var signals = Set<AnyCancellable>()
+    private var receivedPath = false
 
-    init() {
-        guard !LaunchMode.isUITesting else { return }
+    init(monitoring: Bool = true) {
+        guard monitoring, !LaunchMode.isUITesting else { return }
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.available = path.status != .unsatisfied
-                self.constrained = path.isConstrained
-                self.expensive = path.isExpensive
-                self.revision += 1
+                self.updatePath(available: path.status != .unsatisfied,
+                                constrained: path.isConstrained, expensive: path.isExpensive)
             }
         }
         monitor.start(queue: DispatchQueue(label: "corenest.network-path", qos: .utility))
@@ -57,6 +56,18 @@ final class ConnectionEnvironment: ObservableObject {
                 self.revision += 1
             }.store(in: &signals)
         }
+    }
+
+    func updatePath(available: Bool, constrained: Bool, expensive: Bool) {
+        let changed = self.available != available || self.constrained != constrained || self.expensive != expensive
+        // The first, identical Wi-Fi observation must not cancel startup's HTTP read.
+        // Later observations may indicate a route change even when these flags match.
+        let restart = receivedPath || changed
+        receivedPath = true
+        self.available = available
+        self.constrained = constrained
+        self.expensive = expensive
+        if restart { revision += 1 }
     }
 
     deinit { monitor.cancel() }
@@ -155,7 +166,9 @@ final class APIClient {
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.waitsForConnectivity = true
+        // NWPathMonitor and the foreground owner handle recovery. Do not leave an old
+        // read waiting invisibly for connectivity while a newer owner is reconnecting.
+        configuration.waitsForConnectivity = false
         session = URLSession(configuration: configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
         // Mutation requests must not queue behind periodic telemetry transfers.
         let controlConfiguration = configuration.copy() as! URLSessionConfiguration

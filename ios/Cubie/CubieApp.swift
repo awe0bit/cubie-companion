@@ -21,6 +21,12 @@ struct RootView: View {
     @State private var initialAppearanceHandled = false
     @State private var showDeveloper = false
 
+    private var connectionInterval: Int {
+        ConnectionPolicy.interval(overview: navigation.selection == .overview,
+            settings: navigation.selection == .settings, economy: economy || connection.lowPower,
+            constrained: connection.constrained, thermal: connection.thermal, expensive: connection.expensive)
+    }
+
     var body: some View {
         Group {
             if #available(iOS 26.0, *) {
@@ -96,12 +102,9 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { store.pauseConnection() }
         }
-        .task(id: "\(scenePhase)-\(store.endpoint)-\(connection.revision)-\(navigation.selection)-\(economy)-\(store.connectionRevision)") {
+        .task(id: "\(scenePhase)-\(store.endpoint)-\(connection.revision)-\(connectionInterval)-\(store.connectionRevision)") {
             guard scenePhase == .active, !LaunchMode.isUITesting else { return }
-            let interval = ConnectionPolicy.interval(overview: navigation.selection == .overview,
-                settings: navigation.selection == .settings, economy: economy || connection.lowPower,
-                constrained: connection.constrained, thermal: connection.thermal, expensive: connection.expensive)
-            await store.receiveLiveUpdates(interval: interval, networkAvailable: connection.available)
+            await store.receiveLiveUpdates(interval: connectionInterval, networkAvailable: connection.available)
         }
     }
 }

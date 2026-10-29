@@ -104,6 +104,15 @@ class BrandTests(unittest.TestCase):
         self.assertIn('if initialSnapshot == nil',source)
         self.assertNotIn('"snapshotJSON": RuntimeBridge.json(store)',source)
 
+    def test_connection_owner_keys_off_cadence_not_the_visible_tab(self):
+        source=(ROOT/'ios/Cubie/CubieApp.swift').read_text(encoding='utf-8')
+        identity=source.split('.task(id: ',1)[1].split(') {',1)[0]
+        self.assertIn(r'\(connectionInterval)',identity)
+        self.assertNotIn(r'\(navigation.selection)',identity)
+        store=(ROOT/'ios/Cubie/BoardStore.swift').read_text(encoding='utf-8')
+        self.assertNotIn('if capabilities == nil { await refresh() }',store)
+        self.assertIn('await refresh(timeout: 4)',store)
+
     def test_prominent_button_theme_contrast(self):
         colors=json.loads((ROOT/'ios/Cubie/Assets.xcassets/AccentColor.colorset/Contents.json').read_text())['colors']
         def luminance(components):
